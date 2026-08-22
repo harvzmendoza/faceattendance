@@ -1,4 +1,7 @@
 import { Head } from '@inertiajs/react';
+import { ScrollText } from 'lucide-react';
+import { EmptyState } from '@/components/empty-state';
+import { EntityCard } from '@/components/entity-card';
 import { Pagination } from '@/components/pagination';
 import {
     Table,
@@ -31,44 +34,66 @@ export default function AuditLogsIndex({
     return (
         <AppLayout title="Audit logs">
             <Head title="Audit logs" />
-            <div className="rounded-xl border bg-card">
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Time</TableHead>
-                            <TableHead>Action</TableHead>
-                            <TableHead>User</TableHead>
-                            <TableHead>IP</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {logs.data.length === 0 && (
-                            <TableRow>
-                                <TableCell
-                                    colSpan={4}
-                                    className="text-muted-foreground"
-                                >
-                                    No audit events recorded yet.
-                                </TableCell>
-                            </TableRow>
-                        )}
+            {logs.data.length === 0 ? (
+                <EmptyState
+                    icon={ScrollText}
+                    message="No audit events recorded yet."
+                />
+            ) : (
+                <>
+                    <div className="flex flex-col gap-3 lg:hidden">
                         {logs.data.map((log) => (
-                            <TableRow key={log.id}>
-                                <TableCell>
-                                    {log.created_at
+                            <EntityCard
+                                key={log.id}
+                                icon={ScrollText}
+                                title={log.action_label}
+                                subtitle={`${log.user_name ?? 'System'} · ${log.ip_address ?? 'No IP'}`}
+                                trailing={
+                                    log.created_at
                                         ? new Date(
                                               log.created_at,
                                           ).toLocaleString()
-                                        : '—'}
-                                </TableCell>
-                                <TableCell>{log.action_label}</TableCell>
-                                <TableCell>{log.user_name ?? '—'}</TableCell>
-                                <TableCell>{log.ip_address ?? '—'}</TableCell>
-                            </TableRow>
+                                        : '—'
+                                }
+                            />
                         ))}
-                    </TableBody>
-                </Table>
-            </div>
+                    </div>
+                    <div className="hidden rounded-2xl border bg-card lg:block">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Time</TableHead>
+                                    <TableHead>Action</TableHead>
+                                    <TableHead>User</TableHead>
+                                    <TableHead>IP</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {logs.data.map((log) => (
+                                    <TableRow key={log.id}>
+                                        <TableCell>
+                                            {log.created_at
+                                                ? new Date(
+                                                      log.created_at,
+                                                  ).toLocaleString()
+                                                : '—'}
+                                        </TableCell>
+                                        <TableCell>
+                                            {log.action_label}
+                                        </TableCell>
+                                        <TableCell>
+                                            {log.user_name ?? '—'}
+                                        </TableCell>
+                                        <TableCell>
+                                            {log.ip_address ?? '—'}
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
+                </>
+            )}
             <div className="mt-4">
                 <Pagination links={logs.links} />
             </div>

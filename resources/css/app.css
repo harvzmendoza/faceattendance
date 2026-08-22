@@ -52,8 +52,8 @@
     --card-foreground: oklch(0.21 0.03 255);
     --popover: oklch(1 0 0);
     --popover-foreground: oklch(0.21 0.03 255);
-    --primary: oklch(0.37 0.08 255);
-    --primary-foreground: oklch(0.985 0 0);
+    --primary: oklch(0.42 0.1 195);
+    --primary-foreground: oklch(0.99 0.01 195);
     --secondary: oklch(0.96 0.01 247);
     --secondary-foreground: oklch(0.25 0.03 255);
     --muted: oklch(0.96 0.01 247);
@@ -64,7 +64,7 @@
     --destructive-foreground: oklch(0.985 0 0);
     --border: oklch(0.91 0.01 247);
     --input: oklch(0.91 0.01 247);
-    --ring: oklch(0.37 0.08 255);
+    --ring: oklch(0.42 0.1 195);
     --sidebar: oklch(0.22 0.04 255);
     --sidebar-foreground: oklch(0.97 0.01 247);
     --sidebar-primary: oklch(0.72 0.12 195);
@@ -110,5 +110,15 @@
 
     body {
         @apply bg-background text-foreground;
+    }
+}
+
+@layer utilities {
+    .pb-safe {
+        padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+    }
+
+    .pt-safe {
+        padding-top: max(0.5rem, env(safe-area-inset-top));
     }
 }

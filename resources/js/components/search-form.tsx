@@ -31,7 +31,7 @@ export function SearchForm({
                 name="search"
                 placeholder="Search..."
                 defaultValue={defaultValue}
-                className="h-11"
+                className="min-h-12"
             />
         </Form>
     );

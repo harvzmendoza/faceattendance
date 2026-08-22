@@ -1,8 +1,9 @@
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
+import { Camera, ImagePlus, Save, ScanFace, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
+import { StatusChip } from '@/components/status-chip';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useFaceRecognitionProvider } from '@/hooks/use-face-recognition-provider';
@@ -144,6 +145,7 @@ export default function ParticipantsEnroll({
 
     const canSave =
         form.data.descriptor.length === 128 && ready && !form.processing;
+    const captured = form.data.descriptor.length === 128;
 
     return (
         <AppLayout
@@ -160,80 +162,108 @@ export default function ParticipantsEnroll({
                         : `Enroll ${participant.full_name}`
                 }
             />
-            <Card className="mx-auto max-w-3xl">
-                <CardHeader>
-                    <CardTitle>{participant.full_name}</CardTitle>
+            <div className="mx-auto flex max-w-2xl flex-col gap-4 rounded-2xl bg-card p-6 shadow-sm ring-1 ring-border/60">
+                <div className="flex flex-col gap-2">
+                    <p className="text-lg font-semibold">
+                        {participant.full_name}
+                    </p>
                     <p className="text-sm text-muted-foreground">
                         {participant.registration_number}
                     </p>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-4">
-                    <video
-                        ref={videoRef}
-                        autoPlay
-                        muted
-                        playsInline
-                        className="aspect-video w-full rounded-xl bg-black object-cover"
+                    <StatusChip
+                        icon={ScanFace}
+                        label={
+                            captured
+                                ? 'Face captured'
+                                : participant.latest_face_profile
+                                  ? 'Already enrolled'
+                                  : 'Not enrolled'
+                        }
+                        tone={
+                            captured
+                                ? 'success'
+                                : participant.latest_face_profile
+                                  ? 'success'
+                                  : 'warning'
+                        }
                     />
-                    <p className="text-base">{modelError ?? status}</p>
-                    {form.errors.descriptor && (
-                        <p className="text-sm text-destructive">
-                            {form.errors.descriptor}
-                        </p>
-                    )}
-                    {form.errors.model_version && (
-                        <p className="text-sm text-destructive">
-                            {form.errors.model_version}
-                        </p>
-                    )}
-                    <div className="flex flex-wrap gap-2">
-                        <Button
-                            type="button"
-                            className="min-h-11"
-                            onClick={startCamera}
-                            disabled={!ready}
-                        >
-                            Start camera
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="secondary"
-                            className="min-h-11"
-                            onClick={captureFromVideo}
-                            disabled={!ready || capturing}
-                        >
-                            Capture face
-                        </Button>
-                    </div>
-                    <div className="flex flex-col gap-2">
-                        <Label htmlFor="photo">Or use a photo</Label>
+                </div>
+                <video
+                    ref={videoRef}
+                    autoPlay
+                    muted
+                    playsInline
+                    className="aspect-video w-full rounded-2xl bg-black object-cover"
+                />
+                <p className="text-base">{modelError ?? status}</p>
+                {form.errors.descriptor && (
+                    <p className="text-sm text-destructive">
+                        {form.errors.descriptor}
+                    </p>
+                )}
+                {form.errors.model_version && (
+                    <p className="text-sm text-destructive">
+                        {form.errors.model_version}
+                    </p>
+                )}
+                <Button
+                    type="button"
+                    size="lg"
+                    className="w-full"
+                    onClick={startCamera}
+                    disabled={!ready}
+                >
+                    <Camera />
+                    Start camera
+                </Button>
+                <Button
+                    type="button"
+                    variant="secondary"
+                    size="lg"
+                    className="w-full"
+                    onClick={captureFromVideo}
+                    disabled={!ready || capturing}
+                >
+                    <ScanFace />
+                    Capture face
+                </Button>
+                <div className="flex flex-col gap-2">
+                    <Label htmlFor="photo">Or use a photo</Label>
+                    <label className="flex min-h-12 cursor-pointer items-center gap-2 rounded-2xl border border-input px-4 text-sm">
+                        <ImagePlus className="size-5 text-muted-foreground" />
+                        <span>Choose photo</span>
                         <Input
                             id="photo"
                             type="file"
                             accept="image/jpeg,image/png,image/webp"
-                            className="h-11"
+                            className="sr-only"
                             disabled={!ready || capturing}
                             onChange={(event) =>
                                 void captureFromPhoto(event.target.files?.[0])
                             }
                         />
-                    </div>
-                    <form onSubmit={submit} className="flex flex-wrap gap-2">
-                        <Button
-                            type="submit"
-                            className="min-h-11"
-                            disabled={!canSave}
-                        >
-                            {participant.latest_face_profile
-                                ? 'Save re-enrollment'
-                                : 'Save enrollment'}
-                        </Button>
-                        <Button asChild variant="outline" className="min-h-11">
-                            <Link href={show.url(participant)}>Cancel</Link>
-                        </Button>
-                    </form>
-                </CardContent>
-            </Card>
+                    </label>
+                </div>
+                <form onSubmit={submit} className="flex flex-col gap-2">
+                    <Button
+                        type="submit"
+                        size="lg"
+                        className="w-full"
+                        disabled={!canSave}
+                    >
+                        <Save />
+                        {participant.latest_face_profile
+                            ? 'Save re-enrollment'
+                            : 'Save enrollment'}
+                    </Button>
+                    <Button variant="outline" className="w-full" asChild>
+                        <Link href={show.url(participant)}>
+                            <X />
+                            Cancel
+                        </Link>
+                    </Button>
+                </form>
+            </div>
         </AppLayout>
     );
 }

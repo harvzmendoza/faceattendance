@@ -1,6 +1,20 @@
 import { Head, router } from '@inertiajs/react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+    CalendarClock,
+    MonitorSmartphone,
+    Percent,
+    UserCheck,
+    UserMinus,
+    Users,
+    Wifi,
+    WifiOff,
+} from 'lucide-react';
+import { EmptyState } from '@/components/empty-state';
+import { EntityCard } from '@/components/entity-card';
+import { StatTile } from '@/components/stat-tile';
+import { StatusChip } from '@/components/status-chip';
 import AppLayout from '@/layouts/app-layout';
+import { fieldSelectClass } from '@/lib/utils';
 import { dashboard } from '@/routes';
 import type { AttendanceRecordSummary, EventSummary } from '@/types/models';
 
@@ -35,12 +49,9 @@ export default function Dashboard({
     return (
         <AppLayout title="Dashboard">
             <Head title="Dashboard" />
-            <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-muted-foreground">
-                    Live attendance overview for the selected event.
-                </p>
+            <div className="mb-5">
                 <select
-                    className="h-11 min-w-56 rounded-md border border-input bg-background px-3 text-sm"
+                    className={`${fieldSelectClass} sm:max-w-xs`}
                     value={event?.id ?? ''}
                     onChange={(e) =>
                         router.get(
@@ -60,112 +71,135 @@ export default function Dashboard({
                     ))}
                 </select>
             </div>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <StatCard label="Participants" value={stats.participants} />
-                <StatCard label="Present" value={stats.present} />
-                <StatCard label="Absent" value={stats.absent} />
-                <StatCard label="Attendance" value={`${stats.percentage}%`} />
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <StatTile
+                    icon={Users}
+                    label="Participants"
+                    value={stats.participants}
+                />
+                <StatTile
+                    icon={UserCheck}
+                    label="Present"
+                    value={stats.present}
+                />
+                <StatTile
+                    icon={UserMinus}
+                    label="Absent"
+                    value={stats.absent}
+                />
+                <StatTile
+                    icon={Percent}
+                    label="Attendance"
+                    value={`${stats.percentage}%`}
+                />
             </div>
             <div className="mt-6 grid gap-4 lg:grid-cols-3">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Sessions</CardTitle>
-                    </CardHeader>
-                    <CardContent className="flex flex-col gap-2 text-sm">
-                        {sessionStats.length === 0 ? (
-                            <p className="text-muted-foreground">
-                                No sessions for this event.
-                            </p>
-                        ) : (
-                            <ul className="flex flex-col gap-2">
-                                {sessionStats.map((session) => (
-                                    <li
-                                        key={session.id}
-                                        className="flex items-center justify-between gap-3"
-                                    >
-                                        <span>{session.name}</span>
-                                        <span className="text-muted-foreground">
-                                            {session.present} /{' '}
-                                            {session.registered}
-                                        </span>
-                                    </li>
-                                ))}
-                            </ul>
-                        )}
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Devices</CardTitle>
-                    </CardHeader>
-                    <CardContent className="flex flex-col gap-2 text-sm">
-                        <p>Online devices: {stats.online_devices}</p>
-                        <p>Offline devices: {stats.offline_devices}</p>
-                        <p>Pending synchronizations: {stats.pending_sync}</p>
-                        {devices.length === 0 ? (
-                            <p className="text-muted-foreground">
-                                No attendance devices registered yet.
-                            </p>
-                        ) : (
-                            <ul className="mt-2 flex flex-col gap-1">
-                                {devices.map((device) => (
-                                    <li key={device.id}>
-                                        {device.presence === 'online'
-                                            ? '🟢'
-                                            : '🔴'}{' '}
+                <section className="flex flex-col gap-3 rounded-2xl bg-card p-4 shadow-sm ring-1 ring-border/60">
+                    <h2 className="font-semibold">Sessions</h2>
+                    {sessionStats.length === 0 ? (
+                        <EmptyState
+                            icon={CalendarClock}
+                            message="No sessions for this event."
+                        />
+                    ) : (
+                        <ul className="flex flex-col gap-2">
+                            {sessionStats.map((session) => (
+                                <li
+                                    key={session.id}
+                                    className="flex min-h-12 items-center justify-between gap-3"
+                                >
+                                    <span className="flex items-center gap-2">
+                                        <CalendarClock className="size-5 text-muted-foreground" />
+                                        {session.name}
+                                    </span>
+                                    <span className="text-sm text-muted-foreground">
+                                        {session.present} / {session.registered}
+                                    </span>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </section>
+                <section className="flex flex-col gap-3 rounded-2xl bg-card p-4 shadow-sm ring-1 ring-border/60">
+                    <h2 className="font-semibold">Devices</h2>
+                    <div className="flex flex-wrap gap-2">
+                        <StatusChip
+                            icon={Wifi}
+                            label={`${stats.online_devices} online`}
+                            tone="success"
+                        />
+                        <StatusChip
+                            icon={WifiOff}
+                            label={`${stats.offline_devices} offline`}
+                            tone="danger"
+                        />
+                        <StatusChip
+                            icon={MonitorSmartphone}
+                            label={`${stats.pending_sync} pending`}
+                            tone="warning"
+                        />
+                    </div>
+                    {devices.length === 0 ? (
+                        <EmptyState
+                            icon={MonitorSmartphone}
+                            message="No attendance devices registered yet."
+                        />
+                    ) : (
+                        <ul className="flex flex-col gap-2">
+                            {devices.map((device) => (
+                                <li
+                                    key={device.id}
+                                    className="flex min-h-12 items-center justify-between gap-3"
+                                >
+                                    <span className="flex items-center gap-2">
+                                        <MonitorSmartphone className="size-5 text-muted-foreground" />
                                         {device.name}
-                                    </li>
-                                ))}
-                            </ul>
-                        )}
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Recent attendance</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        {recentAttendance.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">
-                                No attendance recorded yet.
-                            </p>
-                        ) : (
-                            <ul className="flex flex-col gap-3">
-                                {recentAttendance.map((record) => (
-                                    <li
-                                        key={record.id}
-                                        className="flex items-center justify-between gap-3 text-sm"
-                                    >
-                                        <span className="font-medium">
-                                            {record.participant.full_name}
-                                        </span>
-                                        <span className="text-muted-foreground">
-                                            {new Date(
-                                                record.recorded_at,
-                                            ).toLocaleTimeString()}
-                                        </span>
-                                    </li>
-                                ))}
-                            </ul>
-                        )}
-                    </CardContent>
-                </Card>
+                                    </span>
+                                    <StatusChip
+                                        icon={
+                                            device.presence === 'online'
+                                                ? Wifi
+                                                : WifiOff
+                                        }
+                                        label={
+                                            device.presence === 'online'
+                                                ? 'Online'
+                                                : 'Offline'
+                                        }
+                                        tone={
+                                            device.presence === 'online'
+                                                ? 'success'
+                                                : 'danger'
+                                        }
+                                    />
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </section>
+                <section className="flex flex-col gap-3 rounded-2xl bg-card p-4 shadow-sm ring-1 ring-border/60">
+                    <h2 className="font-semibold">Recent attendance</h2>
+                    {recentAttendance.length === 0 ? (
+                        <EmptyState
+                            icon={UserCheck}
+                            message="No attendance recorded yet."
+                        />
+                    ) : (
+                        <div className="flex flex-col gap-2">
+                            {recentAttendance.map((record) => (
+                                <EntityCard
+                                    key={record.id}
+                                    icon={UserCheck}
+                                    title={record.participant.full_name}
+                                    subtitle={new Date(
+                                        record.recorded_at,
+                                    ).toLocaleTimeString()}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </section>
             </div>
         </AppLayout>
-    );
-}
-
-function StatCard({ label, value }: { label: string; value: string | number }) {
-    return (
-        <Card>
-            <CardHeader>
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                    {label}
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
-                <p className="text-3xl font-semibold">{value}</p>
-            </CardContent>
-        </Card>
     );
 }

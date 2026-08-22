@@ -1,6 +1,11 @@
 import { Form, Head, Link, usePage } from '@inertiajs/react';
+import { ChevronRight, Download, Upload, UserPlus, Users } from 'lucide-react';
+import { EmptyState } from '@/components/empty-state';
+import { EntityCard } from '@/components/entity-card';
+import { PageHeader } from '@/components/page-header';
 import { Pagination } from '@/components/pagination';
 import { SearchForm } from '@/components/search-form';
+import { StatusChip } from '@/components/status-chip';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -36,19 +41,32 @@ export default function ParticipantsIndex({
     return (
         <AppLayout title="Participants">
             <Head title="Participants" />
-            <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <PageHeader
+                actions={
+                    can.create ? (
+                        <Button asChild>
+                            <Link href={create.url()}>
+                                <UserPlus />
+                                Add participant
+                            </Link>
+                        </Button>
+                    ) : null
+                }
+            />
+            <div className="mb-4 flex flex-col gap-3">
                 <SearchForm
                     action={index.url()}
                     defaultValue={filters.search}
                 />
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row">
                     {can.export && (
-                        <Button variant="outline" asChild className="min-h-11">
+                        <Button variant="outline" asChild>
                             <a
                                 href={exportMethod.url({
                                     query: { search: filters.search },
                                 })}
                             >
+                                <Download />
                                 Export CSV
                             </a>
                         </Button>
@@ -57,7 +75,7 @@ export default function ParticipantsIndex({
                         <Form
                             {...importMethod.form()}
                             encType="multipart/form-data"
-                            className="flex gap-2"
+                            className="flex flex-col gap-2 sm:flex-row"
                         >
                             {({ processing }) => (
                                 <>
@@ -65,90 +83,110 @@ export default function ParticipantsIndex({
                                         type="file"
                                         name="file"
                                         accept=".csv,text/csv"
-                                        className="h-11 max-w-56"
                                         required
                                     />
                                     <Button
                                         type="submit"
                                         variant="outline"
-                                        className="min-h-11"
                                         disabled={processing}
                                     >
+                                        <Upload />
                                         Import CSV
                                     </Button>
                                 </>
                             )}
                         </Form>
                     )}
-                    {can.create && (
-                        <Button asChild className="min-h-11">
-                            <Link href={create.url()}>Add participant</Link>
-                        </Button>
-                    )}
                 </div>
             </div>
             {importErrors && importErrors.length > 0 && (
-                <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm">
+                <div className="mb-4 rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-sm">
                     {importErrors.map((error) => (
                         <p key={error}>{error}</p>
                     ))}
                 </div>
             )}
-            <div className="rounded-xl border bg-card">
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Registration</TableHead>
-                            <TableHead>Name</TableHead>
-                            <TableHead>Organization</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead />
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {participants.data.length === 0 && (
-                            <TableRow>
-                                <TableCell
-                                    colSpan={5}
-                                    className="text-muted-foreground"
-                                >
-                                    No participants found.
-                                </TableCell>
-                            </TableRow>
-                        )}
+            {participants.data.length === 0 ? (
+                <EmptyState icon={Users} message="No participants found." />
+            ) : (
+                <>
+                    <div className="flex flex-col gap-3 lg:hidden">
                         {participants.data.map((participant) => (
-                            <TableRow key={participant.id}>
-                                <TableCell>
-                                    {participant.registration_number}
-                                </TableCell>
-                                <TableCell className="font-medium">
-                                    <Link
-                                        href={show.url(participant)}
-                                        className="hover:underline"
-                                    >
-                                        {participant.full_name}
-                                    </Link>
-                                </TableCell>
-                                <TableCell>
-                                    {participant.organization ?? '—'}
-                                </TableCell>
-                                <TableCell>
-                                    <Badge
-                                        variant={
-                                            participant.status === 'active'
-                                                ? 'success'
-                                                : 'secondary'
-                                        }
-                                    >
-                                        {participant.status}
-                                    </Badge>
-                                </TableCell>
-                                <TableCell />
-                            </TableRow>
+                            <Link
+                                key={participant.id}
+                                href={show.url(participant)}
+                            >
+                                <EntityCard
+                                    icon={Users}
+                                    title={participant.full_name}
+                                    subtitle={`${participant.registration_number} · ${participant.organization ?? 'No organization'}`}
+                                    trailing={
+                                        <span className="flex items-center gap-2">
+                                            <StatusChip
+                                                icon={Users}
+                                                label={participant.status}
+                                                tone={
+                                                    participant.status ===
+                                                    'active'
+                                                        ? 'success'
+                                                        : 'neutral'
+                                                }
+                                            />
+                                            <ChevronRight className="size-5" />
+                                        </span>
+                                    }
+                                />
+                            </Link>
                         ))}
-                    </TableBody>
-                </Table>
-            </div>
+                    </div>
+                    <div className="hidden rounded-2xl border bg-card lg:block">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Registration</TableHead>
+                                    <TableHead>Name</TableHead>
+                                    <TableHead>Organization</TableHead>
+                                    <TableHead>Status</TableHead>
+                                    <TableHead />
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {participants.data.map((participant) => (
+                                    <TableRow key={participant.id}>
+                                        <TableCell>
+                                            {participant.registration_number}
+                                        </TableCell>
+                                        <TableCell className="font-medium">
+                                            <Link
+                                                href={show.url(participant)}
+                                                className="hover:underline"
+                                            >
+                                                {participant.full_name}
+                                            </Link>
+                                        </TableCell>
+                                        <TableCell>
+                                            {participant.organization ?? '—'}
+                                        </TableCell>
+                                        <TableCell>
+                                            <Badge
+                                                variant={
+                                                    participant.status ===
+                                                    'active'
+                                                        ? 'success'
+                                                        : 'secondary'
+                                                }
+                                            >
+                                                {participant.status}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell />
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
+                </>
+            )}
             <div className="mt-4">
                 <Pagination links={participants.links} />
             </div>

@@ -1,7 +1,7 @@
 import { Form, Head, Link } from '@inertiajs/react';
-import { Badge } from '@/components/ui/badge';
+import { Pencil, ScanFace, Trash2 } from 'lucide-react';
+import { StatusChip } from '@/components/status-chip';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import AppLayout from '@/layouts/app-layout';
 import { show as showEvent } from '@/routes/events';
 import { destroy, edit, enroll } from '@/routes/participants';
@@ -20,46 +20,54 @@ export default function ParticipantsShow({
     return (
         <AppLayout title={participant.full_name}>
             <Head title={participant.full_name} />
-            <div className="mb-6 flex flex-wrap items-start gap-6">
-                {participant.photo_url ? (
-                    <img
-                        src={participant.photo_url}
-                        alt=""
-                        className="h-32 w-32 rounded-xl object-cover"
-                    />
-                ) : (
-                    <div className="flex h-32 w-32 items-center justify-center rounded-xl bg-muted text-muted-foreground">
-                        No photo
-                    </div>
-                )}
-                <div className="flex-1">
-                    <h2 className="text-2xl font-semibold">
-                        {participant.full_name}
-                    </h2>
-                    <p className="text-muted-foreground">
-                        {participant.registration_number}
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                        <Badge
-                            variant={
-                                participant.status === 'active'
-                                    ? 'success'
-                                    : 'secondary'
-                            }
-                        >
-                            {participant.status}
-                        </Badge>
-                        {participant.latest_face_profile ? (
-                            <Badge variant="outline">Face enrolled</Badge>
-                        ) : (
-                            <Badge variant="warning">Face not enrolled</Badge>
-                        )}
+            <div className="mb-6 flex flex-col gap-4">
+                <div className="flex items-start gap-4">
+                    {participant.photo_url ? (
+                        <img
+                            src={participant.photo_url}
+                            alt=""
+                            className="size-24 rounded-2xl object-cover"
+                        />
+                    ) : (
+                        <div className="flex size-24 items-center justify-center rounded-2xl bg-muted text-sm text-muted-foreground">
+                            No photo
+                        </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                        <p className="text-muted-foreground">
+                            {participant.registration_number}
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            <StatusChip
+                                icon={ScanFace}
+                                label={participant.status}
+                                tone={
+                                    participant.status === 'active'
+                                        ? 'success'
+                                        : 'neutral'
+                                }
+                            />
+                            <StatusChip
+                                icon={ScanFace}
+                                label={
+                                    participant.latest_face_profile
+                                        ? 'Face enrolled'
+                                        : 'Face not enrolled'
+                                }
+                                tone={
+                                    participant.latest_face_profile
+                                        ? 'success'
+                                        : 'warning'
+                                }
+                            />
+                        </div>
                     </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-col gap-2">
                     {can.enroll && (
-                        <Button asChild variant="outline" className="min-h-11">
+                        <Button asChild size="lg" className="w-full">
                             <Link href={enroll.url(participant)}>
+                                <ScanFace />
                                 {participant.latest_face_profile
                                     ? 'Re-enroll face'
                                     : 'Enroll face'}
@@ -67,8 +75,11 @@ export default function ParticipantsShow({
                         </Button>
                     )}
                     {can.update && (
-                        <Button asChild className="min-h-11">
-                            <Link href={edit.url(participant)}>Edit</Link>
+                        <Button asChild variant="outline" className="w-full">
+                            <Link href={edit.url(participant)}>
+                                <Pencil />
+                                Edit
+                            </Link>
                         </Button>
                     )}
                     {can.delete && (
@@ -77,9 +88,10 @@ export default function ParticipantsShow({
                                 <Button
                                     type="submit"
                                     variant="destructive"
-                                    className="min-h-11"
+                                    className="w-full"
                                     disabled={processing}
                                 >
+                                    <Trash2 />
                                     Delete
                                 </Button>
                             )}
@@ -87,32 +99,30 @@ export default function ParticipantsShow({
                     )}
                 </div>
             </div>
-            <Card>
-                <CardHeader>
-                    <CardTitle>Contact and events</CardTitle>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-2 text-sm">
-                    <p>Email: {participant.email ?? '—'}</p>
-                    <p>Phone: {participant.phone ?? '—'}</p>
-                    <p>Organization: {participant.organization ?? '—'}</p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                        {participant.events.length === 0 && (
-                            <p className="text-muted-foreground">
-                                Not assigned to any event.
-                            </p>
-                        )}
-                        {participant.events.map((event) => (
-                            <Link
-                                key={event.id}
-                                href={showEvent.url(event)}
-                                className="rounded-full border px-3 py-1 hover:bg-accent"
-                            >
-                                {event.name}
-                            </Link>
-                        ))}
-                    </div>
-                </CardContent>
-            </Card>
+            <section className="flex flex-col gap-3 rounded-2xl bg-card p-4 shadow-sm ring-1 ring-border/60">
+                <h2 className="font-semibold">Contact and events</h2>
+                <p className="text-sm">Email: {participant.email ?? '—'}</p>
+                <p className="text-sm">Phone: {participant.phone ?? '—'}</p>
+                <p className="text-sm">
+                    Organization: {participant.organization ?? '—'}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                    {participant.events.length === 0 && (
+                        <p className="text-sm text-muted-foreground">
+                            Not assigned to any event.
+                        </p>
+                    )}
+                    {participant.events.map((event) => (
+                        <Link
+                            key={event.id}
+                            href={showEvent.url(event)}
+                            className="rounded-full border px-3 py-2 text-sm hover:bg-accent"
+                        >
+                            {event.name}
+                        </Link>
+                    ))}
+                </div>
+            </section>
         </AppLayout>
     );
 }

@@ -1,5 +1,7 @@
 import { Head, Link, useHttp } from '@inertiajs/react';
+import { LogOut, RefreshCw, UserCheck, Wifi, WifiOff } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { StatusChip } from '@/components/status-chip';
 import { Button } from '@/components/ui/button';
 import { useDeviceHeartbeat } from '@/hooks/use-device-heartbeat';
 import { useFaceRecognitionProvider } from '@/hooks/use-face-recognition-provider';
@@ -65,7 +67,8 @@ export default function AttendanceScan({
     const lastRecognitionAt = useRef(0);
     const participantCooldownRef = useRef(new Map<number, number>());
     const presentIdsRef = useRef(new Set(initialPresentIds));
-    const [hint, setHint] = useState('Looking for face…');
+    const emptyRosterHint = 'No enrolled faces. Enroll participants first.';
+    const [hint, setHint] = useState('Loading roster…');
     const [presentCount, setPresentCount] = useState(initialPresentCount);
     const [registeredCount, setRegisteredCount] = useState(
         initialRegisteredCount,
@@ -94,6 +97,7 @@ export default function AttendanceScan({
             if (cached.length > 0) {
                 rosterRef.current = cached;
                 setMatchRoster(cached, attendance.match_distance_threshold);
+                setHint('Looking for face…');
             }
         }
 
@@ -102,6 +106,8 @@ export default function AttendanceScan({
 
             if (rosterRef.current.length === 0) {
                 setHint('Unable to load the recognition roster.');
+            } else {
+                setHint('Looking for face…');
             }
         }
 
@@ -116,6 +122,11 @@ export default function AttendanceScan({
                 );
                 setPresentCount(data.present_count);
                 setRegisteredCount(data.registered_count);
+                setHint(
+                    data.participants.length === 0
+                        ? emptyRosterHint
+                        : 'Looking for face…',
+                );
                 void syncService.cacheRoster(event.id, data.participants);
             },
             onHttpException: () => {
@@ -308,12 +319,7 @@ export default function AttendanceScan({
         recordMatch,
     ]);
 
-    const statusLabel =
-        status === 'syncing'
-            ? 'SYNCING'
-            : status === 'offline'
-              ? 'OFFLINE'
-              : 'ONLINE';
+    const kioskChip = 'border-0 bg-white/15 text-white backdrop-blur-sm';
 
     return (
         <div className="relative min-h-dvh bg-zinc-950 text-white">
@@ -326,22 +332,22 @@ export default function AttendanceScan({
                 className="absolute inset-0 size-full object-cover"
             />
             <div className="absolute inset-0 bg-zinc-950/30" />
-            <div className="relative z-10 flex min-h-dvh flex-col justify-between p-6">
-                <div className="flex items-start justify-between gap-4">
-                    <div>
+            <div className="pt-safe pb-safe relative z-10 flex min-h-dvh flex-col justify-between p-5">
+                <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
                         <p className="text-sm tracking-wide text-zinc-300 uppercase">
                             {eventName}
                         </p>
-                        <p className="text-3xl font-semibold md:text-4xl">
+                        <p className="mt-1 text-2xl font-semibold md:text-3xl">
                             {cameraError ?? modelError ?? hint}
                         </p>
                         {status === 'offline' && (
-                            <p className="mt-2 text-xl text-zinc-300">
+                            <p className="mt-2 text-base text-zinc-300">
                                 Attendance saved locally.
                             </p>
                         )}
                         {status === 'syncing' && (
-                            <p className="mt-2 text-xl text-zinc-300">
+                            <p className="mt-2 text-base text-zinc-300">
                                 Synchronizing... {pendingCount}
                             </p>
                         )}
@@ -349,67 +355,84 @@ export default function AttendanceScan({
                             pendingCount === 0 &&
                             lastResult !== null &&
                             lastResult.synced + lastResult.duplicates > 0 && (
-                                <p className="mt-2 text-xl text-emerald-400">
+                                <p className="mt-2 text-base text-emerald-400">
                                     Synchronization complete
                                 </p>
                             )}
                     </div>
-                    <div className="flex flex-col items-end gap-2 text-right">
-                        <span
-                            className={`rounded-full px-3 py-1 text-sm font-medium ${
-                                status === 'online'
-                                    ? 'bg-emerald-500/90 text-white'
-                                    : status === 'syncing'
-                                      ? 'bg-amber-500/90 text-white'
-                                      : 'bg-zinc-600 text-white'
-                            }`}
-                        >
-                            {statusLabel}
-                        </span>
-                        <p className="text-2xl font-semibold md:text-3xl">
-                            Present: {presentCount} / {registeredCount}
-                        </p>
+                    <div className="flex shrink-0 flex-col items-end gap-2">
+                        {status === 'online' && (
+                            <StatusChip
+                                icon={Wifi}
+                                label="Online"
+                                className={kioskChip}
+                            />
+                        )}
+                        {status === 'syncing' && (
+                            <StatusChip
+                                icon={RefreshCw}
+                                label="Syncing"
+                                className="border-0 bg-amber-500/90 text-white"
+                            />
+                        )}
+                        {status === 'offline' && (
+                            <StatusChip
+                                icon={WifiOff}
+                                label="Offline"
+                                className={kioskChip}
+                            />
+                        )}
+                        <StatusChip
+                            icon={UserCheck}
+                            label={`${presentCount} / ${registeredCount}`}
+                            className={kioskChip}
+                        />
                     </div>
                 </div>
                 <div className="flex justify-start">
-                    <Button asChild variant="secondary" className="min-h-11">
+                    <Button
+                        asChild
+                        variant="secondary"
+                        className="rounded-full"
+                    >
                         <Link
                             href={attendanceIndex.url({
                                 query: { event_id: event.id },
                             })}
                         >
-                            Exit camera
+                            <LogOut />
+                            Exit
                         </Link>
                     </Button>
                 </div>
             </div>
             {overlay && (
                 <div className="absolute inset-0 z-20 flex items-center justify-center bg-zinc-950/80 p-6">
-                    <div className="flex w-full max-w-xl flex-col items-center gap-4 text-center">
+                    <div className="flex w-full max-w-md flex-col items-center gap-3 text-center">
                         {overlay.photo_url ? (
                             <img
                                 src={overlay.photo_url}
                                 alt=""
-                                className="h-40 w-40 rounded-2xl object-cover"
+                                className="size-32 rounded-2xl object-cover"
                             />
                         ) : (
-                            <div className="flex h-40 w-40 items-center justify-center rounded-2xl bg-zinc-800 text-zinc-400">
+                            <div className="flex size-32 items-center justify-center rounded-2xl bg-zinc-800 text-zinc-400">
                                 No photo
                             </div>
                         )}
-                        <p className="text-4xl font-semibold md:text-5xl">
+                        <p className="text-3xl font-semibold">
                             {overlay.full_name}
                         </p>
-                        <p className="text-2xl text-zinc-300">
+                        <p className="text-lg text-zinc-300">
                             {overlay.registration_number}
                         </p>
-                        <p className="text-xl text-zinc-300">
+                        <p className="text-sm text-zinc-400">
                             {new Date(overlay.recorded_at).toLocaleTimeString()}
                         </p>
-                        <p className="text-2xl font-medium text-emerald-400">
+                        <p className="text-xl font-medium text-emerald-400">
                             Attendance recorded
                         </p>
-                        <p className="text-xl text-zinc-300">Saved locally</p>
+                        <p className="text-base text-zinc-300">Saved locally</p>
                     </div>
                 </div>
             )}

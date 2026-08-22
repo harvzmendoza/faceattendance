@@ -1,6 +1,17 @@
 import { Head, router } from '@inertiajs/react';
+import {
+    Download,
+    FileBarChart,
+    Filter,
+    UserCheck,
+    UserMinus,
+    Users,
+} from 'lucide-react';
+import { EmptyState } from '@/components/empty-state';
+import { EntityCard } from '@/components/entity-card';
+import { StatTile } from '@/components/stat-tile';
+import { StatusChip } from '@/components/status-chip';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
     Table,
@@ -11,6 +22,7 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
+import { fieldSelectClass } from '@/lib/utils';
 import { exportMethod, index } from '@/routes/reports';
 import type { EventSummary } from '@/types/models';
 
@@ -76,7 +88,7 @@ export default function ReportsIndex({
         <AppLayout title="Reports">
             <Head title="Reports" />
             <form
-                className="mb-6 grid gap-3 md:grid-cols-2 xl:grid-cols-6"
+                className="mb-6 flex flex-col gap-3"
                 onSubmit={(e) => {
                     e.preventDefault();
                     applyFilters(e.currentTarget);
@@ -85,7 +97,7 @@ export default function ReportsIndex({
                 <select
                     name="event_id"
                     defaultValue={filters.event_id ?? ''}
-                    className="h-11 rounded-md border border-input bg-background px-3 text-sm"
+                    className={fieldSelectClass}
                 >
                     <option value="">Select event</option>
                     {events.map((event) => (
@@ -97,7 +109,7 @@ export default function ReportsIndex({
                 <select
                     name="session_id"
                     defaultValue={filters.session_id ?? ''}
-                    className="h-11 rounded-md border border-input bg-background px-3 text-sm"
+                    className={fieldSelectClass}
                 >
                     <option value="">All sessions</option>
                     {sessions.map((session) => (
@@ -124,101 +136,138 @@ export default function ReportsIndex({
                 <select
                     name="attendance_status"
                     defaultValue={filters.attendance_status}
-                    className="h-11 rounded-md border border-input bg-background px-3 text-sm"
+                    className={fieldSelectClass}
                 >
                     <option value="all">All statuses</option>
                     <option value="present">Present</option>
                     <option value="absent">Absent</option>
                 </select>
-                <Button type="submit" className="min-h-11 xl:col-span-6">
+                <Button type="submit" className="w-full">
+                    <Filter />
                     Apply filters
                 </Button>
             </form>
-            <div className="mb-4 flex flex-wrap items-center gap-3">
-                <p className="text-sm text-muted-foreground">
-                    {summary.total} participants · {summary.present} present ·{' '}
-                    {summary.absent} absent
-                </p>
-                {filters.event_id && (
-                    <div className="ml-auto flex flex-wrap gap-2">
-                        <Button variant="outline" asChild className="min-h-11">
-                            <a
-                                href={exportMethod.url({
-                                    query: { ...exportQuery, format: 'csv' },
-                                })}
-                            >
-                                CSV
-                            </a>
-                        </Button>
-                        <Button variant="outline" asChild className="min-h-11">
-                            <a
-                                href={exportMethod.url({
-                                    query: { ...exportQuery, format: 'xls' },
-                                })}
-                            >
-                                Excel
-                            </a>
-                        </Button>
-                        <Button variant="outline" asChild className="min-h-11">
-                            <a
-                                href={exportMethod.url({
-                                    query: { ...exportQuery, format: 'pdf' },
-                                })}
-                            >
-                                PDF
-                            </a>
-                        </Button>
-                    </div>
-                )}
+            <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
+                <StatTile
+                    icon={Users}
+                    label="Participants"
+                    value={summary.total}
+                />
+                <StatTile
+                    icon={UserCheck}
+                    label="Present"
+                    value={summary.present}
+                />
+                <StatTile
+                    icon={UserMinus}
+                    label="Absent"
+                    value={summary.absent}
+                />
             </div>
-            <Card>
-                <CardHeader>
-                    <CardTitle>Attendance</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Registration No</TableHead>
-                                <TableHead>Participant</TableHead>
-                                <TableHead>Organization</TableHead>
-                                <TableHead>Check-in</TableHead>
-                                <TableHead>Check-out</TableHead>
-                                <TableHead>Status</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {rows.length === 0 && (
+            {filters.event_id && (
+                <div className="mb-4 flex flex-col gap-2 sm:flex-row">
+                    <Button variant="outline" asChild>
+                        <a
+                            href={exportMethod.url({
+                                query: { ...exportQuery, format: 'csv' },
+                            })}
+                        >
+                            <Download />
+                            CSV
+                        </a>
+                    </Button>
+                    <Button variant="outline" asChild>
+                        <a
+                            href={exportMethod.url({
+                                query: { ...exportQuery, format: 'xls' },
+                            })}
+                        >
+                            <Download />
+                            Excel
+                        </a>
+                    </Button>
+                    <Button variant="outline" asChild>
+                        <a
+                            href={exportMethod.url({
+                                query: { ...exportQuery, format: 'pdf' },
+                            })}
+                        >
+                            <Download />
+                            PDF
+                        </a>
+                    </Button>
+                </div>
+            )}
+            {rows.length === 0 ? (
+                <EmptyState
+                    icon={FileBarChart}
+                    message="Select an event to view the attendance report."
+                />
+            ) : (
+                <>
+                    <div className="flex flex-col gap-3 lg:hidden">
+                        {rows.map((row) => (
+                            <EntityCard
+                                key={row.registration_number}
+                                icon={Users}
+                                title={row.participant}
+                                subtitle={`${row.registration_number} · ${row.organization || 'No organization'} · In ${row.check_in || '—'} · Out ${row.check_out || '—'}`}
+                                trailing={
+                                    <StatusChip
+                                        icon={
+                                            row.status.toLowerCase() ===
+                                            'present'
+                                                ? UserCheck
+                                                : UserMinus
+                                        }
+                                        label={row.status}
+                                        tone={
+                                            row.status.toLowerCase() ===
+                                            'present'
+                                                ? 'success'
+                                                : 'neutral'
+                                        }
+                                    />
+                                }
+                            />
+                        ))}
+                    </div>
+                    <div className="hidden rounded-2xl border bg-card lg:block">
+                        <Table>
+                            <TableHeader>
                                 <TableRow>
-                                    <TableCell
-                                        colSpan={6}
-                                        className="text-muted-foreground"
-                                    >
-                                        Select an event to view the attendance
-                                        report.
-                                    </TableCell>
+                                    <TableHead>Registration No</TableHead>
+                                    <TableHead>Participant</TableHead>
+                                    <TableHead>Organization</TableHead>
+                                    <TableHead>Check-in</TableHead>
+                                    <TableHead>Check-out</TableHead>
+                                    <TableHead>Status</TableHead>
                                 </TableRow>
-                            )}
-                            {rows.map((row) => (
-                                <TableRow key={row.registration_number}>
-                                    <TableCell>
-                                        {row.registration_number}
-                                    </TableCell>
-                                    <TableCell>{row.participant}</TableCell>
-                                    <TableCell>
-                                        {row.organization || '—'}
-                                    </TableCell>
-                                    <TableCell>{row.check_in || '—'}</TableCell>
-                                    <TableCell>
-                                        {row.check_out || '—'}
-                                    </TableCell>
-                                    <TableCell>{row.status}</TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </CardContent>
-            </Card>
+                            </TableHeader>
+                            <TableBody>
+                                {rows.map((row) => (
+                                    <TableRow key={row.registration_number}>
+                                        <TableCell>
+                                            {row.registration_number}
+                                        </TableCell>
+                                        <TableCell>{row.participant}</TableCell>
+                                        <TableCell>
+                                            {row.organization || '—'}
+                                        </TableCell>
+                                        <TableCell>
+                                            {row.check_in || '—'}
+                                        </TableCell>
+                                        <TableCell>
+                                            {row.check_out || '—'}
+                                        </TableCell>
+                                        <TableCell>{row.status}</TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
+                </>
+            )}
         </AppLayout>
     );
 }

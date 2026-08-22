@@ -1,8 +1,15 @@
 import { Head, Link } from '@inertiajs/react';
-import { Check } from 'lucide-react';
+import {
+    ArrowLeft,
+    Check,
+    Cpu,
+    HardDriveDownload,
+    ScanFace,
+    Users,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { StatusChip } from '@/components/status-chip';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useDeviceHeartbeat } from '@/hooks/use-device-heartbeat';
 import AppLayout from '@/layouts/app-layout';
 import { index, scan } from '@/routes/attendance';
@@ -147,83 +154,93 @@ export default function AttendancePrepare({
     }, [event.id]);
 
     return (
-        <AppLayout title="Prepare Offline Device">
+        <AppLayout title="Prepare device">
             <Head title="Prepare Offline Device" />
-            <Card className="mx-auto max-w-xl">
-                <CardHeader>
-                    <CardTitle>
-                        {ready
-                            ? 'READY FOR OFFLINE ATTENDANCE'
-                            : 'Preparing Offline Attendance...'}
-                    </CardTitle>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-4">
-                    <p className="text-sm text-muted-foreground">
-                        {event.name}
-                    </p>
-                    <ul className="flex flex-col gap-3 text-lg">
-                        <ChecklistItem done={checklist.event} label="Event" />
-                        <ChecklistItem
-                            done={checklist.participants}
-                            label={`${participantCount} Participants`}
-                        />
-                        <ChecklistItem
-                            done={checklist.profiles}
-                            label="Face Profiles"
-                        />
-                        <ChecklistItem
-                            done={checklist.models}
-                            label="Recognition Models"
-                        />
-                        <ChecklistItem
-                            done={checklist.appCache}
-                            label="Application Cache"
-                        />
-                    </ul>
-                    {error && (
-                        <p className="text-sm text-destructive">{error}</p>
-                    )}
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                        {ready && (
-                            <Button asChild className="min-h-11">
-                                <Link
-                                    href={scan.url({
-                                        query: { event_id: event.id },
-                                    })}
-                                >
-                                    Start camera attendance
-                                </Link>
-                            </Button>
-                        )}
-                        <Button asChild variant="outline" className="min-h-11">
+            <div className="mx-auto flex max-w-xl flex-col gap-5 rounded-2xl bg-card p-6 shadow-sm ring-1 ring-border/60">
+                <div className="flex flex-col gap-2">
+                    <StatusChip
+                        icon={ready ? Check : HardDriveDownload}
+                        label={
+                            ready
+                                ? 'Ready for offline attendance'
+                                : 'Preparing offline attendance'
+                        }
+                        tone={ready ? 'success' : 'warning'}
+                    />
+                    <p className="text-lg font-semibold">{event.name}</p>
+                </div>
+                <ul className="flex flex-col gap-3">
+                    <ChecklistItem done={checklist.event} label="Event" />
+                    <ChecklistItem
+                        done={checklist.participants}
+                        label={`${participantCount} Participants`}
+                        icon={Users}
+                    />
+                    <ChecklistItem
+                        done={checklist.profiles}
+                        label="Face Profiles"
+                        icon={ScanFace}
+                    />
+                    <ChecklistItem
+                        done={checklist.models}
+                        label="Recognition Models"
+                        icon={Cpu}
+                    />
+                    <ChecklistItem
+                        done={checklist.appCache}
+                        label="Application Cache"
+                    />
+                </ul>
+                {error && <p className="text-sm text-destructive">{error}</p>}
+                <div className="flex flex-col gap-2">
+                    {ready && (
+                        <Button size="lg" className="w-full" asChild>
                             <Link
-                                href={index.url({
+                                href={scan.url({
                                     query: { event_id: event.id },
                                 })}
                             >
-                                Back to attendance
+                                <ScanFace />
+                                Start camera
                             </Link>
                         </Button>
-                    </div>
-                </CardContent>
-            </Card>
+                    )}
+                    <Button variant="outline" className="w-full" asChild>
+                        <Link
+                            href={index.url({
+                                query: { event_id: event.id },
+                            })}
+                        >
+                            <ArrowLeft />
+                            Back to attendance
+                        </Link>
+                    </Button>
+                </div>
+            </div>
         </AppLayout>
     );
 }
 
-function ChecklistItem({ done, label }: { done: boolean; label: string }) {
+function ChecklistItem({
+    done,
+    label,
+    icon: Icon = HardDriveDownload,
+}: {
+    done: boolean;
+    label: string;
+    icon?: typeof HardDriveDownload;
+}) {
     return (
-        <li className="flex items-center gap-3">
-            <span
-                className={`flex size-7 items-center justify-center rounded-full ${
-                    done
-                        ? 'bg-emerald-500 text-white'
-                        : 'bg-muted text-muted-foreground'
-                }`}
-            >
-                {done ? <Check className="size-4" /> : null}
+        <li className="flex items-center justify-between gap-3">
+            <span className="flex items-center gap-3">
+                <Icon className="size-5 text-muted-foreground" />
+                <span>{label}</span>
             </span>
-            <span>{label}</span>
+            <StatusChip
+                icon={Check}
+                label={done ? 'Ready' : 'Waiting'}
+                tone={done ? 'success' : 'neutral'}
+            />
         </li>
     );
 }

@@ -1,20 +1,20 @@
 import { Form, Head, Link, router } from '@inertiajs/react';
-import { Pagination } from '@/components/pagination';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table';
+    ChevronDown,
+    HardDriveDownload,
+    ScanFace,
+    UserCheck,
+} from 'lucide-react';
+import { EmptyState } from '@/components/empty-state';
+import { EntityCard } from '@/components/entity-card';
+import { Pagination } from '@/components/pagination';
+import { StatusChip } from '@/components/status-chip';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { useDeviceHeartbeat } from '@/hooks/use-device-heartbeat';
 import { useOfflineSync } from '@/hooks/use-offline-sync';
 import AppLayout from '@/layouts/app-layout';
+import { fieldSelectClass } from '@/lib/utils';
 import { index, prepare, scan, store } from '@/routes/attendance';
 import type {
     AttendanceRecordSummary,
@@ -52,9 +52,9 @@ export default function AttendanceIndex({
     return (
         <AppLayout title="Attendance">
             <Head title="Attendance" />
-            <div className="mb-6 grid gap-3 lg:grid-cols-[1fr_1fr_1fr_auto]">
+            <div className="mx-auto flex max-w-2xl flex-col gap-4">
                 <select
-                    className="h-11 rounded-md border border-input bg-background px-3 text-sm"
+                    className={fieldSelectClass}
                     value={event?.id ?? ''}
                     onChange={(e) =>
                         router.get(
@@ -70,7 +70,7 @@ export default function AttendanceIndex({
                     ))}
                 </select>
                 <select
-                    className="h-11 rounded-md border border-input bg-background px-3 text-sm"
+                    className={fieldSelectClass}
                     value={session?.id ?? ''}
                     onChange={(e) =>
                         router.get(
@@ -94,94 +94,89 @@ export default function AttendanceIndex({
                         </option>
                     ))}
                 </select>
-                <form
-                    onSubmit={(e) => {
-                        e.preventDefault();
-                        const search = new FormData(e.currentTarget).get(
-                            'search',
-                        );
-                        router.get(
-                            index.url({
-                                query: {
-                                    event_id: event?.id,
-                                    attendance_session_id: session?.id,
-                                    search: String(search ?? ''),
-                                },
-                            }),
-                        );
-                    }}
-                >
-                    <Input
-                        name="search"
-                        defaultValue={filters.search}
-                        placeholder="Search registered participants"
-                        className="h-11"
-                    />
-                </form>
                 {event && (
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                        <Button asChild className="min-h-11">
+                    <>
+                        <Button size="lg" className="w-full" asChild>
                             <Link
                                 href={scan.url({
                                     query: { event_id: event.id },
                                 })}
                             >
-                                Start camera attendance
+                                <ScanFace />
+                                Start camera
                             </Link>
                         </Button>
-                        <Button asChild variant="outline" className="min-h-11">
+                        <Button variant="outline" className="w-full" asChild>
                             <Link
                                 href={prepare.url({
                                     query: { event_id: event.id },
                                 })}
                             >
-                                Prepare Offline Device
+                                <HardDriveDownload />
+                                Prepare device
                             </Link>
                         </Button>
-                    </div>
+                    </>
                 )}
-            </div>
-            <div className="grid gap-6 xl:grid-cols-2">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Mark present</CardTitle>
-                    </CardHeader>
-                    <CardContent>
+                <details className="group rounded-2xl bg-card shadow-sm ring-1 ring-border/60">
+                    <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-4 font-medium [&::-webkit-details-marker]:hidden">
+                        <span className="flex items-center gap-2">
+                            <UserCheck className="size-5" />
+                            Mark present
+                        </span>
+                        <ChevronDown className="size-5 text-muted-foreground transition group-open:rotate-180" />
+                    </summary>
+                    <div className="flex flex-col gap-3 border-t px-4 py-4">
+                        <form
+                            onSubmit={(e) => {
+                                e.preventDefault();
+                                const search = new FormData(
+                                    e.currentTarget,
+                                ).get('search');
+                                router.get(
+                                    index.url({
+                                        query: {
+                                            event_id: event?.id,
+                                            attendance_session_id: session?.id,
+                                            search: String(search ?? ''),
+                                        },
+                                    }),
+                                );
+                            }}
+                        >
+                            <Input
+                                name="search"
+                                defaultValue={filters.search}
+                                placeholder="Search registered participants"
+                            />
+                        </form>
                         {!event && (
-                            <p className="text-sm text-muted-foreground">
-                                Select an event first.
-                            </p>
+                            <EmptyState
+                                icon={UserCheck}
+                                message="Select an event first."
+                            />
                         )}
                         {event && participants.length === 0 && (
-                            <p className="text-sm text-muted-foreground">
-                                No matching registered participants.
-                            </p>
+                            <EmptyState
+                                icon={UserCheck}
+                                message="No matching registered participants."
+                            />
                         )}
-                        <ul className="flex flex-col gap-2">
-                            {participants.map((participant) => {
-                                const present = presentIds.includes(
-                                    participant.id,
-                                );
+                        {participants.map((participant) => {
+                            const present = presentIds.includes(participant.id);
 
-                                return (
-                                    <li
-                                        key={participant.id}
-                                        className="flex items-center justify-between gap-3 rounded-lg border p-3"
-                                    >
-                                        <div>
-                                            <p className="font-medium">
-                                                {participant.full_name}
-                                            </p>
-                                            <p className="text-sm text-muted-foreground">
-                                                {
-                                                    participant.registration_number
-                                                }
-                                            </p>
-                                        </div>
-                                        {present ? (
-                                            <Badge variant="success">
-                                                Present
-                                            </Badge>
+                            return (
+                                <EntityCard
+                                    key={participant.id}
+                                    title={participant.full_name}
+                                    subtitle={participant.registration_number}
+                                    trailing={
+                                        present ? (
+                                            <StatusChip
+                                                icon={UserCheck}
+                                                label="Present"
+                                                tone="success"
+                                            />
                                         ) : (
                                             <Form {...store.form()}>
                                                 {({ processing }) => (
@@ -208,66 +203,56 @@ export default function AttendanceIndex({
                                                         />
                                                         <Button
                                                             type="submit"
-                                                            className="min-h-11"
+                                                            size="sm"
                                                             disabled={
                                                                 processing
                                                             }
                                                         >
+                                                            <UserCheck />
                                                             Mark present
                                                         </Button>
                                                     </>
                                                 )}
                                             </Form>
-                                        )}
-                                    </li>
-                                );
-                            })}
-                        </ul>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Recorded attendance</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        {!records || records.data.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">
-                                No attendance recorded yet.
-                            </p>
-                        ) : (
-                            <>
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Participant</TableHead>
-                                            <TableHead>Time</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {records.data.map((record) => (
-                                            <TableRow key={record.id}>
-                                                <TableCell>
-                                                    {
-                                                        record.participant
-                                                            .full_name
-                                                    }
-                                                </TableCell>
-                                                <TableCell>
-                                                    {new Date(
-                                                        record.recorded_at,
-                                                    ).toLocaleString()}
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                                <div className="mt-4">
-                                    <Pagination links={records.links} />
-                                </div>
-                            </>
-                        )}
-                    </CardContent>
-                </Card>
+                                        )
+                                    }
+                                />
+                            );
+                        })}
+                    </div>
+                </details>
+                <section className="flex flex-col gap-3">
+                    <h2 className="text-sm font-medium text-muted-foreground">
+                        Recorded attendance
+                    </h2>
+                    {!records || records.data.length === 0 ? (
+                        <EmptyState
+                            icon={ScanFace}
+                            message="No attendance recorded yet."
+                        />
+                    ) : (
+                        <>
+                            {records.data.map((record) => (
+                                <EntityCard
+                                    key={record.id}
+                                    icon={UserCheck}
+                                    title={record.participant.full_name}
+                                    subtitle={new Date(
+                                        record.recorded_at,
+                                    ).toLocaleString()}
+                                    trailing={
+                                        <StatusChip
+                                            icon={UserCheck}
+                                            label="Present"
+                                            tone="success"
+                                        />
+                                    }
+                                />
+                            ))}
+                            <Pagination links={records.links} />
+                        </>
+                    )}
+                </section>
             </div>
         </AppLayout>
     );
