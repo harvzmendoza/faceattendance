@@ -10,6 +10,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | vite.config.ts | .ai/rules/general.md |
 | database/migrations/** | .ai/rules/migrations.md |
 | app/Models/FaceProfile.php | .ai/rules/models.md |
+| resources/js/services/offline/SyncService.ts | .ai/rules/offline.md |
 | app/Policies/ParticipantPolicy.php | .ai/rules/policies.md |
 | routes/api.php | .ai/rules/routes.md |
 | app/Services/AttendanceService.php, app/Services/AttendanceSyncService.php, app/Services/AttendanceSessionService.php, app/Services/AuditService.php | .ai/rules/services.md |

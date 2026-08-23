@@ -30,6 +30,33 @@ describe('offline queue and sync', () => {
         expect(await service.getPendingCount(1)).toBe(1);
     });
 
+    it('re-queues a synced row for the same person and session so it can sync again', async () => {
+        const service = new SyncService();
+
+        const first = await service.queueAttendance({
+            event_id: 1,
+            participant_id: 10,
+            attendance_session_id: 5,
+            session_type: 'check_in',
+        });
+
+        await db.attendance.put({
+            ...first,
+            sync_status: 'synced',
+        });
+
+        const again = await service.queueAttendance({
+            event_id: 1,
+            participant_id: 10,
+            attendance_session_id: 5,
+            session_type: 'check_in',
+        });
+
+        expect(again.local_id).toBe(first.local_id);
+        expect(again.sync_status).toBe('pending');
+        expect(await service.getPendingCount(1)).toBe(1);
+    });
+
     it('queues a second row when the same person uses another session', async () => {
         const service = new SyncService();
 

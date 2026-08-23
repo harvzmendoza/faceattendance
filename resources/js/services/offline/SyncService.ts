@@ -35,6 +35,7 @@ export type SyncHttp = {
 
 export class SyncService {
     private flushing = false;
+    private flushAgain = false;
 
     public constructor(private readonly http: SyncHttp = { postJson }) {}
 
@@ -113,6 +114,17 @@ export class SyncService {
             .first();
 
         if (existing) {
+            if (existing.sync_status === 'synced') {
+                const pending: LocalAttendance = {
+                    ...existing,
+                    sync_status: 'pending',
+                };
+
+                await db.attendance.put(pending);
+
+                return pending;
+            }
+
             return existing;
         }
 
@@ -173,101 +185,116 @@ export class SyncService {
     }
 
     public async sync(): Promise<SyncResponse | null> {
-        if (!this.isOnline() || this.flushing) {
+        if (!this.isOnline()) {
+            return null;
+        }
+
+        if (this.flushing) {
+            this.flushAgain = true;
+
             return null;
         }
 
         this.flushing = true;
 
         try {
-            const pending = await db.attendance
-                .where('sync_status')
-                .anyOf(['pending', 'failed'])
-                .limit(BATCH_SIZE)
-                .toArray();
+            return await this.flushPending();
+        } finally {
+            this.flushing = false;
 
-            if (pending.length === 0) {
-                return {
-                    success: true,
-                    synced: 0,
-                    failed: 0,
-                    duplicates: 0,
-                };
+            if (this.flushAgain) {
+                this.flushAgain = false;
+                void this.sync();
+            }
+        }
+    }
+
+    private async flushPending(): Promise<SyncResponse> {
+        const pending = await db.attendance
+            .where('sync_status')
+            .anyOf(['pending', 'failed'])
+            .limit(BATCH_SIZE)
+            .toArray();
+
+        if (pending.length === 0) {
+            return {
+                success: true,
+                synced: 0,
+                failed: 0,
+                duplicates: 0,
+            };
+        }
+
+        const localIds = pending.map((row) => row.local_id);
+        await db.attendance
+            .where('local_id')
+            .anyOf(localIds)
+            .modify({
+                sync_status: 'syncing' satisfies SyncStatus,
+            });
+
+        const deviceId = await this.getOrCreateDeviceUuid();
+        const records: SyncPayloadRecord[] = pending.map((row) => ({
+            local_id: row.local_id,
+            event_id: row.event_id,
+            participant_id: row.participant_id,
+            attendance_session_id: row.attendance_session_id,
+            attendance_type: row.attendance_type,
+            recorded_at: row.recorded_at,
+        }));
+
+        try {
+            const response = await this.http.postJson<SyncResponse>(
+                sync.url(),
+                {
+                    device_id: deviceId,
+                    records,
+                },
+            );
+
+            const syncedIds = response.synced_local_ids ?? [];
+            const failedIds = response.failed_local_ids ?? [];
+
+            if (syncedIds.length > 0) {
+                await db.attendance
+                    .where('local_id')
+                    .anyOf(syncedIds)
+                    .modify({
+                        sync_status: 'synced' satisfies SyncStatus,
+                    });
             }
 
-            const localIds = pending.map((row) => row.local_id);
+            if (failedIds.length > 0) {
+                await db.attendance
+                    .where('local_id')
+                    .anyOf(failedIds)
+                    .modify({
+                        sync_status: 'failed' satisfies SyncStatus,
+                    });
+            }
+
+            const accounted = new Set([...syncedIds, ...failedIds]);
+            const leftover = localIds.filter((id) => !accounted.has(id));
+
+            if (leftover.length > 0) {
+                await db.attendance
+                    .where('local_id')
+                    .anyOf(leftover)
+                    .modify({
+                        sync_status: 'pending' satisfies SyncStatus,
+                    });
+            }
+
+            return response;
+        } catch {
             await db.attendance
                 .where('local_id')
                 .anyOf(localIds)
                 .modify({
-                    sync_status: 'syncing' satisfies SyncStatus,
+                    sync_status: 'pending' satisfies SyncStatus,
                 });
 
-            const deviceId = await this.getOrCreateDeviceUuid();
-            const records: SyncPayloadRecord[] = pending.map((row) => ({
-                local_id: row.local_id,
-                event_id: row.event_id,
-                participant_id: row.participant_id,
-                attendance_session_id: row.attendance_session_id,
-                attendance_type: row.attendance_type,
-                recorded_at: row.recorded_at,
-            }));
-
-            try {
-                const response = await this.http.postJson<SyncResponse>(
-                    sync.url(),
-                    {
-                        device_id: deviceId,
-                        records,
-                    },
-                );
-
-                const syncedIds = response.synced_local_ids ?? [];
-                const failedIds = response.failed_local_ids ?? [];
-
-                if (syncedIds.length > 0) {
-                    await db.attendance
-                        .where('local_id')
-                        .anyOf(syncedIds)
-                        .modify({
-                            sync_status: 'synced' satisfies SyncStatus,
-                        });
-                }
-
-                if (failedIds.length > 0) {
-                    await db.attendance
-                        .where('local_id')
-                        .anyOf(failedIds)
-                        .modify({
-                            sync_status: 'failed' satisfies SyncStatus,
-                        });
-                }
-
-                const accounted = new Set([...syncedIds, ...failedIds]);
-                const leftover = localIds.filter((id) => !accounted.has(id));
-
-                if (leftover.length > 0) {
-                    await db.attendance
-                        .where('local_id')
-                        .anyOf(leftover)
-                        .modify({
-                            sync_status: 'pending' satisfies SyncStatus,
-                        });
-                }
-
-                return response;
-            } catch {
-                await db.attendance
-                    .where('local_id')
-                    .anyOf(localIds)
-                    .modify({
-                        sync_status: 'pending' satisfies SyncStatus,
-                    });
-
-                throw new Error('Synchronization failed.');
-            }
-        } finally {
-            this.flushing = false;
+            throw new Error('Synchronization failed.');
         }
     }
 }

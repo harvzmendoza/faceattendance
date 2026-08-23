@@ -278,7 +278,9 @@ export default function AttendanceScan({
                     setHint(lookAtCameraHint);
                 }, 2000);
 
-                void flush();
+                await flush();
+            } catch {
+                setHint('Unable to save attendance. Try again.');
             } finally {
                 recordingRef.current = false;
             }
