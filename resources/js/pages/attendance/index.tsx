@@ -99,7 +99,10 @@ export default function AttendanceIndex({
                         <Button size="lg" className="w-full" asChild>
                             <Link
                                 href={scan.url({
-                                    query: { event_id: event.id },
+                                    query: {
+                                        event_id: event.id,
+                                        attendance_session_id: session?.id,
+                                    },
                                 })}
                             >
                                 <ScanFace />

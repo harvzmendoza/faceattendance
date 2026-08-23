@@ -5,6 +5,7 @@ import type {
     CachedEvent,
     CachedParticipant,
     LocalAttendance,
+    SessionType,
     SyncStatus,
 } from '@/services/offline/db';
 import { postJson } from '@/services/offline/http';
@@ -17,8 +18,16 @@ const PREPARED_EVENT_ID_KEY = 'prepared_event_id';
 export type QueueAttendanceInput = {
     event_id: number;
     participant_id: number;
+    attendance_session_id: number;
+    session_type?: SessionType;
     recorded_at?: string;
 };
+
+export function attendanceTypeForSession(
+    type: SessionType | undefined,
+): 'check_in' | 'check_out' {
+    return type === 'check_out' ? 'check_out' : 'check_in';
+}
 
 export type SyncHttp = {
     postJson: typeof postJson;
@@ -95,8 +104,12 @@ export class SyncService {
         input: QueueAttendanceInput,
     ): Promise<LocalAttendance> {
         const existing = await db.attendance
-            .where('[event_id+participant_id]')
-            .equals([input.event_id, input.participant_id])
+            .where('[event_id+participant_id+attendance_session_id]')
+            .equals([
+                input.event_id,
+                input.participant_id,
+                input.attendance_session_id,
+            ])
             .first();
 
         if (existing) {
@@ -107,7 +120,8 @@ export class SyncService {
             local_id: crypto.randomUUID(),
             event_id: input.event_id,
             participant_id: input.participant_id,
-            attendance_type: 'check_in',
+            attendance_session_id: input.attendance_session_id,
+            attendance_type: attendanceTypeForSession(input.session_type),
             recorded_at: input.recorded_at ?? new Date().toISOString(),
             sync_status: 'pending',
         };
@@ -194,6 +208,7 @@ export class SyncService {
                 local_id: row.local_id,
                 event_id: row.event_id,
                 participant_id: row.participant_id,
+                attendance_session_id: row.attendance_session_id,
                 attendance_type: row.attendance_type,
                 recorded_at: row.recorded_at,
             }));

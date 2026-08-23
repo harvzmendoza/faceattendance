@@ -4,8 +4,10 @@ namespace App\Services;
 
 use App\Enums\AttendanceType;
 use App\Enums\AuditAction;
+use App\Enums\SessionType;
 use App\Exceptions\DuplicateAttendanceException;
 use App\Models\AttendanceRecord;
+use App\Models\AttendanceSession;
 use App\Models\Event;
 use App\Models\Participant;
 use App\Models\User;
@@ -49,6 +51,18 @@ class AttendanceSyncService
 
             $event = Event::query()->find($record['event_id']);
             $participant = Participant::query()->find($record['participant_id']);
+            $session = null;
+
+            if (filled($record['attendance_session_id'] ?? null)) {
+                $session = AttendanceSession::query()->find($record['attendance_session_id']);
+
+                if ($session === null) {
+                    $failed++;
+                    $failedLocalIds[] = $localId;
+
+                    continue;
+                }
+            }
 
             if ($event === null || $participant === null) {
                 $failed++;
@@ -62,8 +76,8 @@ class AttendanceSyncService
                     $event,
                     $participant,
                     $user,
-                    AttendanceType::from((string) $record['attendance_type']),
-                    null,
+                    $this->typeForRecord($record, $session),
+                    $session,
                     $localId,
                     Carbon::parse((string) $record['recorded_at']),
                     $device,
@@ -104,5 +118,21 @@ class AttendanceSyncService
             'synced_local_ids' => $syncedLocalIds,
             'failed_local_ids' => $failedLocalIds,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $record
+     */
+    private function typeForRecord(array $record, ?AttendanceSession $session): AttendanceType
+    {
+        if ($session?->type === SessionType::CheckOut) {
+            return AttendanceType::CheckOut;
+        }
+
+        if ($session !== null) {
+            return AttendanceType::CheckIn;
+        }
+
+        return AttendanceType::from((string) $record['attendance_type']);
     }
 }

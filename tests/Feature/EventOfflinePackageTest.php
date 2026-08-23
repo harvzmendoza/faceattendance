@@ -49,6 +49,8 @@ test('operators receive enrolled participants with descriptors for the event', f
         ->assertJsonPath('enrolled_count', 1)
         ->assertJsonPath('model_version', config('attendance.model_version'))
         ->assertJsonPath('models_url', config('attendance.models_url'))
+        ->assertJsonPath('sessions.0.id', $event->defaultSession()?->id)
+        ->assertJsonPath('sessions.0.name', $event->defaultSession()?->name)
         ->assertJsonMissingPath('participants.1');
 });
 

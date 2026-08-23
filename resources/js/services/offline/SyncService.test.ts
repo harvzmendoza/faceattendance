@@ -10,20 +10,45 @@ describe('offline queue and sync', () => {
         await db.open();
     });
 
-    it('queues attendance locally and skips duplicates for the same participant', async () => {
+    it('queues attendance locally and skips duplicates for the same session', async () => {
         const service = new SyncService();
 
         const first = await service.queueAttendance({
             event_id: 1,
             participant_id: 10,
+            attendance_session_id: 5,
+            session_type: 'check_in',
         });
         const duplicate = await service.queueAttendance({
             event_id: 1,
             participant_id: 10,
+            attendance_session_id: 5,
+            session_type: 'check_in',
         });
 
         expect(duplicate.local_id).toBe(first.local_id);
         expect(await service.getPendingCount(1)).toBe(1);
+    });
+
+    it('queues a second row when the same person uses another session', async () => {
+        const service = new SyncService();
+
+        const checkIn = await service.queueAttendance({
+            event_id: 1,
+            participant_id: 10,
+            attendance_session_id: 5,
+            session_type: 'check_in',
+        });
+        const checkOut = await service.queueAttendance({
+            event_id: 1,
+            participant_id: 10,
+            attendance_session_id: 6,
+            session_type: 'check_out',
+        });
+
+        expect(checkOut.local_id).not.toBe(checkIn.local_id);
+        expect(checkOut.attendance_type).toBe('check_out');
+        expect(await service.getPendingCount(1)).toBe(2);
     });
 
     it('flushes the sync queue and marks accepted local ids as synced', async () => {
@@ -51,6 +76,7 @@ describe('offline queue and sync', () => {
         const row = await service.queueAttendance({
             event_id: 1,
             participant_id: 20,
+            attendance_session_id: 5,
         });
 
         const result = await service.sync();

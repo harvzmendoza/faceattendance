@@ -4,6 +4,7 @@ use App\Models\AttendanceRecord;
 use App\Models\Event;
 use App\Models\Participant;
 use App\Models\User;
+use Inertia\Testing\AssertableInertia as Assert;
 
 test('camera attendance json store records a participant once', function () {
     $operator = User::factory()->operator()->create();
@@ -36,7 +37,16 @@ test('operators can open the camera attendance page', function () {
     $operator = User::factory()->operator()->create();
     $event = Event::factory()->active()->create();
 
+    $session = $event->defaultSession();
+
     $this->actingAs($operator)
         ->get(route('attendance.scan', ['event_id' => $event->id]))
-        ->assertOk();
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('attendance/scan')
+            ->has('sessions', 1)
+            ->where('session.id', $session?->id)
+            ->where('sessions.0.name', $session?->name)
+            ->where('sessions.0.type', $session?->type->value)
+        );
 });

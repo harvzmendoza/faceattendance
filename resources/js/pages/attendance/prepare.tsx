@@ -16,6 +16,7 @@ import { index, scan } from '@/routes/attendance';
 import { offlinePackage } from '@/routes/events';
 import type { RosterEntry } from '@/services/face-recognition/types';
 import { syncService } from '@/services/offline';
+import type { CachedSession } from '@/services/offline/db';
 import { getJson } from '@/services/offline/http';
 import {
     cacheDocuments,
@@ -32,6 +33,7 @@ type PrepareEvent = {
 
 type OfflinePackage = {
     event: PrepareEvent;
+    sessions: CachedSession[];
     participants: RosterEntry[];
     registered_count: number;
     enrolled_count: number;
@@ -66,6 +68,9 @@ export default function AttendancePrepare({
     const [participantCount, setParticipantCount] = useState(registeredCount);
     const [error, setError] = useState<string | null>(null);
     const [ready, setReady] = useState(false);
+    const [defaultSessionId, setDefaultSessionId] = useState<number | null>(
+        null,
+    );
     useDeviceHeartbeat(event.id);
 
     useEffect(() => {
@@ -91,7 +96,9 @@ export default function AttendancePrepare({
                     event_code: pkg.event.event_code,
                     status: pkg.event.status,
                     registered_count: pkg.registered_count,
+                    sessions: pkg.sessions,
                 });
+                setDefaultSessionId(pkg.sessions[0]?.id ?? null);
                 setParticipantCount(pkg.registered_count);
                 setChecklist((current) => ({ ...current, event: true }));
 
@@ -122,7 +129,12 @@ export default function AttendancePrepare({
                 await cacheUrls(photoUrls, { required: false });
                 await cacheDocuments([
                     index.url({ query: { event_id: event.id } }),
-                    scan.url({ query: { event_id: event.id } }),
+                    scan.url({
+                        query: {
+                            event_id: event.id,
+                            attendance_session_id: pkg.sessions[0]?.id,
+                        },
+                    }),
                 ]);
 
                 if (cancelled) {
@@ -197,7 +209,10 @@ export default function AttendancePrepare({
                         <Button size="lg" className="w-full" asChild>
                             <Link
                                 href={scan.url({
-                                    query: { event_id: event.id },
+                                    query: {
+                                        event_id: event.id,
+                                        attendance_session_id: defaultSessionId,
+                                    },
                                 })}
                             >
                                 <ScanFace />

@@ -1,6 +1,9 @@
 <?php
 
+use App\Enums\AttendanceType;
+use App\Enums\SessionType;
 use App\Models\AttendanceRecord;
+use App\Models\AttendanceSession;
 use App\Models\Event;
 use App\Models\Participant;
 use App\Models\User;
@@ -135,4 +138,37 @@ test('unregistered participants increment the failed count', function () {
         ->assertJsonPath('synced', 0);
 
     expect(AttendanceRecord::query()->count())->toBe(0);
+});
+
+test('syncing with a check-out session records against that session', function () {
+    $operator = User::factory()->operator()->create();
+    $event = Event::factory()->active()->create();
+    $participant = Participant::factory()->create();
+    $event->participants()->attach($participant);
+    $checkOut = AttendanceSession::factory()->create([
+        'event_id' => $event->id,
+        'name' => 'Check-out',
+        'type' => SessionType::CheckOut,
+    ]);
+
+    $this->actingAs($operator)
+        ->postJson(route('attendance.sync'), [
+            'device_id' => (string) Str::uuid(),
+            'records' => [[
+                'local_id' => (string) Str::uuid(),
+                'event_id' => $event->id,
+                'participant_id' => $participant->id,
+                'attendance_session_id' => $checkOut->id,
+                'attendance_type' => 'check_in',
+                'recorded_at' => now()->toIso8601String(),
+            ]],
+        ])
+        ->assertOk()
+        ->assertJsonPath('synced', 1);
+
+    $record = AttendanceRecord::query()->first();
+
+    expect($record)->not->toBeNull()
+        ->and($record->attendance_session_id)->toBe($checkOut->id)
+        ->and($record->attendance_type)->toBe(AttendanceType::CheckOut);
 });

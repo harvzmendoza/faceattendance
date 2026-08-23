@@ -3,6 +3,8 @@ import type { Table } from 'dexie';
 
 export type SyncStatus = 'pending' | 'syncing' | 'synced' | 'failed';
 
+export type SessionType = 'check_in' | 'check_out' | 'break' | 'custom';
+
 export type CachedParticipant = {
     event_id: number;
     id: number;
@@ -12,19 +14,27 @@ export type CachedParticipant = {
     descriptor: number[];
 };
 
+export type CachedSession = {
+    id: number;
+    name: string;
+    type: SessionType;
+};
+
 export type CachedEvent = {
     id: number;
     name: string;
     event_code: string;
     status: string;
     registered_count: number;
+    sessions: CachedSession[];
 };
 
 export type LocalAttendance = {
     local_id: string;
     event_id: number;
     participant_id: number;
-    attendance_type: 'check_in';
+    attendance_session_id: number;
+    attendance_type: 'check_in' | 'check_out';
     recorded_at: string;
     sync_status: SyncStatus;
 };
@@ -52,6 +62,11 @@ class FaceAttendanceDatabase extends Dexie {
 
         this.version(2).stores({
             events: 'id',
+        });
+
+        this.version(3).stores({
+            attendance:
+                'local_id, sync_status, event_id, [event_id+sync_status], [event_id+participant_id], [event_id+participant_id+attendance_session_id]',
         });
     }
 }

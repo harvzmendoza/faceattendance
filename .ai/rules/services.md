@@ -19,3 +19,6 @@ Admins manage nested event sessions from the event show page. An event must keep
 
 ## Audit logs for sensitive actions
 Sensitive actions write audit_logs: login, face enrollment, attendance sync batches, device register/revoke, report export, session create/delete. Heartbeats are not logged. Admins view /audit-logs; operators cannot.
+
+## Sync records against the client session
+Camera sync may send records.*.attendance_session_id. When present, record against that session. Map session type check_out to AttendanceType::CheckOut; other session types stay check_in. Missing session id still uses the event default session. Uniqueness remains per (event, participant, session, attendance_type).

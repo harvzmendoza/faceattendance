@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Enums\AttendanceType;
 use App\Models\AttendanceRecord;
+use App\Models\AttendanceSession;
 use App\Models\Event;
 use App\Models\Participant;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -28,6 +29,7 @@ class SyncAttendanceRequest extends FormRequest
             'records.*.local_id' => ['required', 'uuid'],
             'records.*.event_id' => ['required', 'integer', Rule::exists(Event::class, 'id')],
             'records.*.participant_id' => ['required', 'integer', Rule::exists(Participant::class, 'id')],
+            'records.*.attendance_session_id' => ['nullable', 'integer', Rule::exists(AttendanceSession::class, 'id')],
             'records.*.attendance_type' => ['required', 'string', Rule::enum(AttendanceType::class)],
             'records.*.recorded_at' => ['required', 'date'],
         ];

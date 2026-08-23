@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\AttendanceSession;
 use App\Models\Event;
 
 class EventOfflinePackageService
@@ -11,6 +12,7 @@ class EventOfflinePackageService
     /**
      * @return array{
      *     event: array{id: int, name: string, event_code: string, status: string},
+     *     sessions: list<array{id: int, name: string, type: string}>,
      *     participants: list<array{id: int, full_name: string, registration_number: string, photo_url: string|null, descriptor: list<float|int>}>,
      *     registered_count: int,
      *     enrolled_count: int,
@@ -29,6 +31,16 @@ class EventOfflinePackageService
                 'event_code' => $event->event_code,
                 'status' => $event->status->value,
             ],
+            'sessions' => $event->sessions()
+                ->orderBy('id')
+                ->get(['id', 'name', 'type'])
+                ->map(fn (AttendanceSession $session): array => [
+                    'id' => $session->id,
+                    'name' => $session->name,
+                    'type' => $session->type->value,
+                ])
+                ->values()
+                ->all(),
             'participants' => $participants->all(),
             'registered_count' => $this->roster->registeredCount($event),
             'enrolled_count' => $participants->count(),

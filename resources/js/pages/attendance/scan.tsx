@@ -7,6 +7,7 @@ import { useDeviceHeartbeat } from '@/hooks/use-device-heartbeat';
 import { useFaceRecognitionProvider } from '@/hooks/use-face-recognition-provider';
 import { useOfflineSync } from '@/hooks/use-offline-sync';
 import { requestCameraStream, stopMediaStream } from '@/lib/camera';
+import { speakThankYou, unlockSpeech } from '@/lib/speech';
 import { index as attendanceIndex } from '@/routes/attendance';
 import { recognitionRoster } from '@/routes/events';
 import { faceErrorMessages } from '@/services/face-recognition';
@@ -16,12 +17,20 @@ import {
 } from '@/services/face-recognition/matchWorker';
 import type { RosterEntry } from '@/services/face-recognition/types';
 import { syncService } from '@/services/offline';
+import type { SessionType } from '@/services/offline/db';
 
 type ScanEvent = {
     id: number;
     name: string;
     event_code: string;
     status: string;
+};
+
+type ScanSession = {
+    id: number;
+    name: string;
+    type: SessionType;
+    present_ids: number[];
 };
 
 type RosterResponse = {
@@ -35,15 +44,28 @@ type SuccessOverlay = {
     registration_number: string;
     photo_url: string | null;
     recorded_at: string;
+    session_name: string;
 };
+
+function presentMapFromSessions(
+    sessions: ScanSession[],
+): Map<number, Set<number>> {
+    return new Map(
+        sessions.map((item) => [item.id, new Set(item.present_ids)]),
+    );
+}
 
 export default function AttendanceScan({
     event,
+    sessions,
+    session,
     presentCount: initialPresentCount,
     presentIds: initialPresentIds,
     registeredCount: initialRegisteredCount,
 }: {
     event: ScanEvent;
+    sessions: ScanSession[];
+    session: { id: number; name: string; type: SessionType } | null;
     presentCount: number;
     presentIds: number[];
     registeredCount: number;
@@ -66,8 +88,11 @@ export default function AttendanceScan({
     const lastDetectAt = useRef(0);
     const lastRecognitionAt = useRef(0);
     const participantCooldownRef = useRef(new Map<number, number>());
-    const presentIdsRef = useRef(new Set(initialPresentIds));
+    const presentBySessionRef = useRef(presentMapFromSessions(sessions));
     const emptyRosterHint = 'No enrolled faces. Enroll participants first.';
+    const chooseSessionHint = 'Choose a session, then look at the camera.';
+    const armedSessionIdRef = useRef<number | null>(null);
+    const [armedSessionId, setArmedSessionId] = useState<number | null>(null);
     const [hint, setHint] = useState('Loading roster…');
     const [presentCount, setPresentCount] = useState(initialPresentCount);
     const [registeredCount, setRegisteredCount] = useState(
@@ -77,11 +102,41 @@ export default function AttendanceScan({
     const [overlay, setOverlay] = useState<SuccessOverlay | null>(null);
     const [cameraError, setCameraError] = useState<string | null>(null);
 
+    const armedSession =
+        sessions.find((item) => item.id === armedSessionId) ?? null;
+
     const rosterHttp = useHttp<Record<string, never>, RosterResponse>({});
 
     useEffect(() => {
         overlayRef.current = overlay !== null;
     }, [overlay]);
+
+    useEffect(() => {
+        if (
+            presentBySessionRef.current.size === 0 &&
+            initialPresentIds.length &&
+            session
+        ) {
+            presentBySessionRef.current.set(
+                session.id,
+                new Set(initialPresentIds),
+            );
+        }
+    }, [initialPresentIds, session]);
+
+    const armSession = (sessionId: number): void => {
+        unlockSpeech();
+        armedSessionIdRef.current = sessionId;
+        setArmedSessionId(sessionId);
+        setPresentCount(presentBySessionRef.current.get(sessionId)?.size ?? 0);
+        setHint('Looking for face…');
+    };
+
+    const disarmSession = (): void => {
+        armedSessionIdRef.current = null;
+        setArmedSessionId(null);
+        setHint('Looking for face…');
+    };
 
     useEffect(() => {
         async function hydrateFromCache(): Promise<void> {
@@ -97,7 +152,10 @@ export default function AttendanceScan({
             if (cached.length > 0) {
                 rosterRef.current = cached;
                 setMatchRoster(cached, attendance.match_distance_threshold);
-                setHint('Looking for face…');
+
+                if (armedSessionIdRef.current === null) {
+                    setHint(chooseSessionHint);
+                }
             }
         }
 
@@ -107,7 +165,7 @@ export default function AttendanceScan({
             if (rosterRef.current.length === 0) {
                 setHint('Unable to load the recognition roster.');
             } else {
-                setHint('Looking for face…');
+                setHint(chooseSessionHint);
             }
         }
 
@@ -120,12 +178,13 @@ export default function AttendanceScan({
                     data.participants,
                     attendance.match_distance_threshold,
                 );
-                setPresentCount(data.present_count);
                 setRegisteredCount(data.registered_count);
                 setHint(
                     data.participants.length === 0
                         ? emptyRosterHint
-                        : 'Looking for face…',
+                        : armedSessionIdRef.current !== null
+                          ? 'Looking for face…'
+                          : chooseSessionHint,
                 );
                 void syncService.cacheRoster(event.id, data.participants);
             },
@@ -180,33 +239,51 @@ export default function AttendanceScan({
 
     const recordMatch = useCallback(
         async (participant: RosterEntry) => {
+            const sessionId = armedSessionIdRef.current;
+            const currentSession = sessions.find(
+                (item) => item.id === sessionId,
+            );
+
+            if (currentSession === undefined) {
+                return;
+            }
+
             recordingRef.current = true;
 
             try {
                 const row = await syncService.queueAttendance({
                     event_id: event.id,
                     participant_id: participant.id,
+                    attendance_session_id: currentSession.id,
+                    session_type: currentSession.type,
                 });
 
-                if (!presentIdsRef.current.has(participant.id)) {
-                    presentIdsRef.current.add(participant.id);
-                    setPresentCount(presentIdsRef.current.size);
+                const presentIds =
+                    presentBySessionRef.current.get(currentSession.id) ??
+                    new Set<number>();
+
+                if (!presentIds.has(participant.id)) {
+                    presentIds.add(participant.id);
+                    presentBySessionRef.current.set(
+                        currentSession.id,
+                        presentIds,
+                    );
+                    setPresentCount(presentIds.size);
                 }
+
+                speakThankYou();
 
                 setOverlay({
                     full_name: participant.full_name,
                     registration_number: participant.registration_number,
                     photo_url: participant.photo_url,
                     recorded_at: row.recorded_at,
+                    session_name: currentSession.name,
                 });
 
                 window.setTimeout(() => {
                     setOverlay(null);
-                    setHint(
-                        syncService.isOnline()
-                            ? 'Looking for face…'
-                            : 'Attendance saved locally.',
-                    );
+                    disarmSession();
                 }, 2000);
 
                 void flush();
@@ -214,7 +291,7 @@ export default function AttendanceScan({
                 recordingRef.current = false;
             }
         },
-        [event.id, flush],
+        [event.id, flush, sessions],
     );
 
     useEffect(() => {
@@ -230,6 +307,10 @@ export default function AttendanceScan({
             raf = window.requestAnimationFrame(tick);
 
             if (detecting || overlayRef.current || recordingRef.current) {
+                return;
+            }
+
+            if (armedSessionIdRef.current === null) {
                 return;
             }
 
@@ -287,8 +368,6 @@ export default function AttendanceScan({
                         ) ?? 0;
 
                     if (cooldownUntil > now) {
-                        setHint('Looking for face…');
-
                         return;
                     }
 
@@ -389,21 +468,53 @@ export default function AttendanceScan({
                         />
                     </div>
                 </div>
-                <div className="flex justify-start">
-                    <Button
-                        asChild
-                        variant="secondary"
-                        className="rounded-full"
-                    >
-                        <Link
-                            href={attendanceIndex.url({
-                                query: { event_id: event.id },
+                <div className="flex flex-col gap-3">
+                    {sessions.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                            {sessions.map((item) => {
+                                const active = item.id === armedSessionId;
+
+                                return (
+                                    <Button
+                                        key={item.id}
+                                        type="button"
+                                        size="lg"
+                                        variant={
+                                            active ? 'default' : 'secondary'
+                                        }
+                                        className={
+                                            active
+                                                ? 'min-h-14 flex-1'
+                                                : 'min-h-14 flex-1 border-0 bg-white/15 text-white hover:bg-white/25'
+                                        }
+                                        onClick={() => armSession(item.id)}
+                                    >
+                                        {item.name}
+                                    </Button>
+                                );
                             })}
+                        </div>
+                    )}
+                    <div className="flex justify-start">
+                        <Button
+                            asChild
+                            variant="secondary"
+                            className="rounded-full"
                         >
-                            <LogOut />
-                            Exit
-                        </Link>
-                    </Button>
+                            <Link
+                                href={attendanceIndex.url({
+                                    query: {
+                                        event_id: event.id,
+                                        attendance_session_id:
+                                            armedSession?.id ?? session?.id,
+                                    },
+                                })}
+                            >
+                                <LogOut />
+                                Exit
+                            </Link>
+                        </Button>
+                    </div>
                 </div>
             </div>
             {overlay && (
@@ -430,7 +541,7 @@ export default function AttendanceScan({
                             {new Date(overlay.recorded_at).toLocaleTimeString()}
                         </p>
                         <p className="text-xl font-medium text-emerald-400">
-                            Attendance recorded
+                            Thank you
                         </p>
                         <p className="text-base text-zinc-300">Saved locally</p>
                     </div>

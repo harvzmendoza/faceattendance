@@ -2,7 +2,8 @@ export type SyncPayloadRecord = {
     local_id: string;
     event_id: number;
     participant_id: number;
-    attendance_type: 'check_in';
+    attendance_session_id?: number;
+    attendance_type: 'check_in' | 'check_out';
     recorded_at: string;
 };
 
