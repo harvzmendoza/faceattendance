@@ -88,7 +88,9 @@ export default function AppLayout({
                         </DropdownMenuContent>
                     </DropdownMenu>
                 </header>
-                <main className="px-4 pb-28 lg:px-8 lg:pb-8">{children}</main>
+                <main className="px-4 pt-4 pb-28 lg:px-8 lg:pt-8 lg:pb-8">
+                    {children}
+                </main>
             </div>
             <BottomNav onMore={() => setMoreOpen(true)} />
             <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
