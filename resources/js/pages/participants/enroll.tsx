@@ -2,6 +2,7 @@ import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { Camera, RefreshCw, Save, ScanFace, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
+import { FaceLivenessGuide } from '@/components/face-liveness-guide';
 import { StatusChip } from '@/components/status-chip';
 import { Button } from '@/components/ui/button';
 import { useFaceRecognitionProvider } from '@/hooks/use-face-recognition-provider';
@@ -11,21 +12,41 @@ import { show } from '@/routes/participants';
 import { update as updateFaceProfile } from '@/routes/participants/face-profile';
 import { faceErrorMessages } from '@/services/face-recognition';
 import {
-    createBlinkTracker,
-    meanEyeAspectRatio,
-    REQUIRED_BLINKS,
+    buildGuideLayout,
+    createLivenessChallenge,
 } from '@/services/face-recognition/liveness';
+import type { LivenessStatus } from '@/services/face-recognition/liveness';
 import type { ParticipantSummary } from '@/types/models';
 
-const lookHint = 'Look at the camera.';
-const capturedHint = 'Face captured. Save to enroll.';
+const lookHint = 'Look straight';
+const capturedHint = 'Liveness Verified';
+const idleHint =
+    'Enroll this participant using the camera. Look straight, turn left, turn right, then blink.';
+const reenrollHint =
+    'Re-enroll this participant using the camera. Look straight, turn left, turn right, then blink.';
 
-function blinkHint(count: number): string {
-    if (count === 0) {
-        return 'Blink twice.';
+function chipLabel(
+    captured: boolean,
+    cameraOn: boolean,
+    alreadyEnrolled: boolean,
+    instruction: string,
+): string {
+    if (captured) {
+        return capturedHint;
     }
 
-    return `Blink twice · ${count} / ${REQUIRED_BLINKS}`;
+    if (cameraOn) {
+        return instruction;
+    }
+
+    return alreadyEnrolled ? 'Already enrolled' : 'Not enrolled';
+}
+
+function emptyChallenge(): Pick<LivenessStatus, 'progress' | 'instruction'> {
+    return {
+        progress: 0,
+        instruction: lookHint,
+    };
 }
 
 export default function ParticipantsEnroll({
@@ -42,19 +63,17 @@ export default function ParticipantsEnroll({
         error: modelError,
     } = useFaceRecognitionProvider();
     const videoRef = useRef<HTMLVideoElement>(null);
+    const overlayRef = useRef<HTMLDivElement>(null);
     const streamRef = useRef<MediaStream | null>(null);
     const cameraOnRef = useRef(false);
     const capturedRef = useRef(false);
-    const capturingRef = useRef(false);
     const lastDetectAt = useRef(0);
-    const trackerRef = useRef(createBlinkTracker());
+    const challengeRef = useRef(createLivenessChallenge());
     const [status, setStatus] = useState(
-        participant.latest_face_profile
-            ? 'Re-enroll this participant using the camera. Blink twice when asked.'
-            : 'Enroll this participant using the camera. Blink twice when asked.',
+        participant.latest_face_profile ? reenrollHint : idleHint,
     );
     const [cameraOn, setCameraOn] = useState(false);
-    const [blinks, setBlinks] = useState(0);
+    const [challengeUi, setChallengeUi] = useState(emptyChallenge);
     const form = useForm({
         descriptor: [] as number[],
         quality_score: 0,
@@ -66,6 +85,18 @@ export default function ParticipantsEnroll({
             stopMediaStream(streamRef.current);
         };
     }, []);
+
+    function resetChallenge(): void {
+        challengeRef.current.reset();
+        capturedRef.current = false;
+        setChallengeUi(emptyChallenge());
+        form.setData({
+            descriptor: [],
+            quality_score: 0,
+            model_version: attendance.model_version,
+        });
+        setStatus(lookHint);
+    }
 
     async function startCamera(): Promise<void> {
         try {
@@ -79,18 +110,9 @@ export default function ParticipantsEnroll({
                 await videoRef.current.play();
             }
 
-            trackerRef.current.reset();
-            capturedRef.current = false;
-            capturingRef.current = false;
             cameraOnRef.current = true;
             setCameraOn(true);
-            setBlinks(0);
-            form.setData({
-                descriptor: [],
-                quality_score: 0,
-                model_version: attendance.model_version,
-            });
-            setStatus(lookHint);
+            resetChallenge();
         } catch (error) {
             cameraOnRef.current = false;
             setCameraOn(false);
@@ -103,16 +125,7 @@ export default function ParticipantsEnroll({
     }
 
     function tryAgain(): void {
-        trackerRef.current.reset();
-        capturedRef.current = false;
-        capturingRef.current = false;
-        setBlinks(0);
-        form.setData({
-            descriptor: [],
-            quality_score: 0,
-            model_version: attendance.model_version,
-        });
-        setStatus(lookHint);
+        resetChallenge();
     }
 
     useEffect(() => {
@@ -127,103 +140,87 @@ export default function ParticipantsEnroll({
 
             raf = window.requestAnimationFrame(tick);
 
-            if (
-                detecting ||
-                capturingRef.current ||
-                capturedRef.current ||
-                !cameraOnRef.current
-            ) {
+            if (detecting || capturedRef.current || !cameraOnRef.current) {
                 return;
             }
 
             const video = videoRef.current;
+            const overlay = overlayRef.current;
             const provider = providerRef.current;
 
-            if (!ready || !video || video.readyState < 2 || !provider) {
+            if (
+                !ready ||
+                !video ||
+                !overlay ||
+                video.readyState < 2 ||
+                !provider
+            ) {
                 return;
             }
 
             const now = Date.now();
 
-            if (now - lastDetectAt.current < 250) {
+            if (now - lastDetectAt.current < 100) {
                 return;
             }
 
             lastDetectAt.current = now;
+
+            const layout = buildGuideLayout(video, {
+                width: overlay.clientWidth,
+                height: overlay.clientHeight,
+            });
+
+            if (layout === null) {
+                return;
+            }
+
             detecting = true;
 
             void provider
                 .detectFace(video)
-                .then(async (faces) => {
-                    if (
-                        cancelled ||
-                        capturedRef.current ||
-                        capturingRef.current
-                    ) {
+                .then((faces) => {
+                    if (cancelled || capturedRef.current) {
                         return;
                     }
 
-                    if (faces.length === 0) {
-                        setStatus(faceErrorMessages.no_face);
+                    const result = challengeRef.current.push(faces, layout);
 
+                    setChallengeUi({
+                        progress: result.progress,
+                        instruction: result.error ?? result.instruction,
+                    });
+                    setStatus(result.error ?? result.instruction);
+
+                    if (!result.complete) {
                         return;
                     }
 
-                    if (faces.length > 1) {
-                        setStatus(faceErrorMessages.multiple_faces);
+                    const descriptor =
+                        result.held?.descriptor ??
+                        (faces[0]?.descriptor?.length === 128
+                            ? faces[0].descriptor
+                            : null);
+                    const qualityScore =
+                        result.held?.qualityScore ?? faces[0]?.score ?? 0;
 
-                        return;
-                    }
-
-                    const face = faces[0];
-                    const boxSide = Math.min(face.box.width, face.box.height);
-
-                    if (boxSide < attendance.min_face_box_px) {
-                        setStatus(faceErrorMessages.too_far);
-
-                        return;
-                    }
-
-                    if (face.score < attendance.min_detection_score) {
+                    if (descriptor === null) {
+                        challengeRef.current.reset();
+                        setChallengeUi(emptyChallenge());
                         setStatus(faceErrorMessages.too_blurry);
 
                         return;
                     }
 
-                    const result = trackerRef.current.push(
-                        meanEyeAspectRatio(face.landmarks),
-                    );
-                    setBlinks(result.blinks);
-
-                    if (!result.complete) {
-                        setStatus(blinkHint(result.blinks));
-
-                        return;
-                    }
-
-                    capturingRef.current = true;
-
-                    const enrollment = await provider.generateDescriptor(video);
-
-                    if (cancelled) {
-                        return;
-                    }
-
-                    if (!enrollment.ok) {
-                        trackerRef.current.reset();
-                        capturingRef.current = false;
-                        setBlinks(0);
-                        setStatus(enrollment.message);
-
-                        return;
-                    }
-
                     capturedRef.current = true;
-                    capturingRef.current = false;
                     form.setData({
-                        descriptor: enrollment.descriptor,
-                        quality_score: enrollment.qualityScore,
+                        descriptor,
+                        quality_score: qualityScore,
                         model_version: attendance.model_version,
+                    });
+                    setChallengeUi({
+                        progress: 1,
+                        instruction: capturedHint,
                     });
                     setStatus(capturedHint);
                 })
@@ -240,13 +237,7 @@ export default function ParticipantsEnroll({
         };
         // The RAF loop reads refs; form.setData is stable enough across renders.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [
-        attendance.min_detection_score,
-        attendance.min_face_box_px,
-        attendance.model_version,
-        providerRef,
-        ready,
-    ]);
+    }, [attendance.model_version, providerRef, ready]);
 
     function submit(event: FormEvent): void {
         event.preventDefault();
@@ -272,7 +263,7 @@ export default function ParticipantsEnroll({
                         : `Enroll ${participant.full_name}`
                 }
             />
-            <div className="mx-auto flex max-w-2xl flex-col gap-4 rounded-2xl bg-card p-6 shadow-sm ring-1 ring-border/60">
+            <div className="mx-auto flex max-w-3xl flex-col gap-4 rounded-2xl bg-card p-6 shadow-sm ring-1 ring-border/60">
                 <div className="flex flex-col gap-2">
                     <p className="text-lg font-semibold">
                         {participant.full_name}
@@ -282,15 +273,12 @@ export default function ParticipantsEnroll({
                     </p>
                     <StatusChip
                         icon={ScanFace}
-                        label={
-                            captured
-                                ? 'Face captured'
-                                : cameraOn
-                                  ? `Blinks ${blinks} / ${REQUIRED_BLINKS}`
-                                  : participant.latest_face_profile
-                                    ? 'Already enrolled'
-                                    : 'Not enrolled'
-                        }
+                        label={chipLabel(
+                            captured,
+                            cameraOn,
+                            participant.latest_face_profile !== null,
+                            challengeUi.instruction,
+                        )}
                         tone={
                             captured
                                 ? 'success'
@@ -302,13 +290,23 @@ export default function ParticipantsEnroll({
                         }
                     />
                 </div>
-                <video
-                    ref={videoRef}
-                    autoPlay
-                    muted
-                    playsInline
-                    className="aspect-video w-full rounded-2xl bg-black object-cover"
-                />
+                <div className="relative overflow-hidden rounded-2xl bg-black">
+                    <video
+                        ref={videoRef}
+                        autoPlay
+                        muted
+                        playsInline
+                        className="aspect-square w-full -scale-x-100 object-cover md:aspect-video"
+                    />
+                    {cameraOn && (
+                        <FaceLivenessGuide
+                            ref={overlayRef}
+                            progress={challengeUi.progress}
+                            instruction={challengeUi.instruction}
+                            verified={captured}
+                        />
+                    )}
+                </div>
                 <p className="text-base">{modelError ?? status}</p>
                 {form.errors.descriptor && (
                     <p className="text-sm text-destructive">

@@ -4,7 +4,10 @@ export {
     findMatch,
 } from '@/services/face-recognition/matcher';
 export {
-    createBlinkTracker,
+    createLivenessChallenge,
+    estimateYaw,
+    isFaceInGuide,
+    minEyeAspectRatio,
     meanEyeAspectRatio,
 } from '@/services/face-recognition/liveness';
 export { faceErrorMessages } from '@/services/face-recognition/types';
