@@ -1,6 +1,8 @@
 import { Head, Link, useHttp } from '@inertiajs/react';
 import { LogOut, RefreshCw, UserCheck, Wifi, WifiOff } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { FaceScanOverlay } from '@/components/face-scan-overlay';
+import type { ScanOverlayBox } from '@/components/face-scan-overlay';
 import { StatusChip } from '@/components/status-chip';
 import { Button } from '@/components/ui/button';
 import { useDeviceHeartbeat } from '@/hooks/use-device-heartbeat';
@@ -15,11 +17,15 @@ import {
     matchDescriptor,
     setMatchRoster,
 } from '@/services/face-recognition/matchWorker';
+import {
+    emptyActiveFaceSelection,
+    mapVideoBoxToDisplay,
+    selectActiveFace,
+} from '@/services/face-recognition/scan-overlay';
+import type { OverlayFace } from '@/services/face-recognition/scan-overlay';
 import type { RosterEntry } from '@/services/face-recognition/types';
 import { syncService } from '@/services/offline';
 import type { SessionType } from '@/services/offline/db';
-
-const MATCH_TTL_MS = 2000;
 
 type ScanEvent = {
     id: number;
@@ -46,11 +52,6 @@ type SuccessOverlay = {
     registration_number: string;
     photo_url: string | null;
     recorded_at: string;
-};
-
-type HeldMatch = {
-    participant: RosterEntry;
-    at: number;
 };
 
 function presentMapFromSessions(
@@ -92,7 +93,8 @@ export default function AttendanceScan({
     const overlayRef = useRef(false);
     const recordingRef = useRef(false);
     const lastDetectAt = useRef(0);
-    const lastMatchRef = useRef<HeldMatch | null>(null);
+    const lastMatchRef = useRef<RosterEntry | null>(null);
+    const selectionRef = useRef(emptyActiveFaceSelection());
     const presentBySessionRef = useRef(presentMapFromSessions(sessions));
     const emptyRosterHint = 'No enrolled faces. Enroll participants first.';
     const lookAtCameraHint = 'Look at the camera, then tap a session.';
@@ -104,6 +106,7 @@ export default function AttendanceScan({
     const [eventName, setEventName] = useState(event.name);
     const [overlay, setOverlay] = useState<SuccessOverlay | null>(null);
     const [cameraError, setCameraError] = useState<string | null>(null);
+    const [boxes, setBoxes] = useState<ScanOverlayBox[]>([]);
 
     const rosterHttp = useHttp<Record<string, never>, RosterResponse>({});
 
@@ -218,15 +221,7 @@ export default function AttendanceScan({
         };
     }, []);
 
-    const freshMatch = (): RosterEntry | null => {
-        const held = lastMatchRef.current;
-
-        if (held === null || Date.now() - held.at > MATCH_TTL_MS) {
-            return null;
-        }
-
-        return held.participant;
-    };
+    const freshMatch = (): RosterEntry | null => lastMatchRef.current;
 
     const saveToSession = useCallback(
         async (scanSession: ScanSession) => {
@@ -266,6 +261,9 @@ export default function AttendanceScan({
 
                 speakThankYou();
 
+                lastMatchRef.current = null;
+                selectionRef.current = emptyActiveFaceSelection();
+                setBoxes([]);
                 setOverlay({
                     full_name: participant.full_name,
                     registration_number: participant.registration_number,
@@ -325,31 +323,101 @@ export default function AttendanceScan({
             detecting = true;
 
             void provider
-                .generateDescriptor(video)
-                .then(async (result) => {
+                .detectFace(video)
+                .then(async (faces) => {
                     if (cancelled || overlayRef.current) {
                         return;
                     }
 
-                    if (!result.ok) {
-                        setHint(result.message);
+                    const overlayFaces: OverlayFace[] = await Promise.all(
+                        faces.map(async (face) => {
+                            const boxSide = Math.min(
+                                face.box.width,
+                                face.box.height,
+                            );
+                            const canMatch =
+                                face.descriptor !== null &&
+                                face.descriptor.length === 128 &&
+                                boxSide >= attendance.min_face_box_px &&
+                                face.score >= attendance.min_detection_score;
+                            const match =
+                                canMatch && face.descriptor !== null
+                                    ? await matchDescriptor(face.descriptor)
+                                    : null;
 
+                            return {
+                                box: face.box,
+                                match,
+                            };
+                        }),
+                    );
+
+                    if (cancelled || overlayRef.current) {
                         return;
                     }
 
-                    const match = await matchDescriptor(result.descriptor);
+                    const selection = selectActiveFace(
+                        selectionRef.current,
+                        overlayFaces,
+                        Date.now(),
+                    );
+                    selectionRef.current = selection;
 
-                    if (match === null) {
-                        setHint(faceErrorMessages.unknown);
+                    const liveMatch = overlayFaces.find(
+                        (face) =>
+                            face.match?.participant.id ===
+                            selection.participantId,
+                    )?.match;
 
-                        return;
+                    if (liveMatch) {
+                        lastMatchRef.current = liveMatch.participant;
+                        setHint(liveMatch.participant.full_name);
+                    } else if (selection.participantId === null) {
+                        lastMatchRef.current = null;
+                        setHint(
+                            faces.length === 0
+                                ? lookAtCameraHint
+                                : faceErrorMessages.unknown,
+                        );
                     }
 
-                    lastMatchRef.current = {
-                        participant: match.participant,
-                        at: Date.now(),
+                    const display = {
+                        width: video.clientWidth,
+                        height: video.clientHeight,
                     };
-                    setHint(match.participant.full_name);
+
+                    setBoxes(
+                        overlayFaces.flatMap((face, index) => {
+                            const mapped = mapVideoBoxToDisplay(
+                                face.box,
+                                video,
+                                display,
+                            );
+
+                            if (mapped === null) {
+                                return [];
+                            }
+
+                            const active =
+                                face.match?.participant.id ===
+                                selection.participantId;
+
+                            return [
+                                {
+                                    key: `${Math.round(face.box.x)}-${Math.round(face.box.y)}-${index}`,
+                                    left: mapped.left,
+                                    top: mapped.top,
+                                    width: mapped.width,
+                                    height: mapped.height,
+                                    active,
+                                    name: active
+                                        ? (face.match?.participant.full_name ??
+                                          null)
+                                        : null,
+                                },
+                            ];
+                        }),
+                    );
                 })
                 .finally(() => {
                     detecting = false;
@@ -362,7 +430,13 @@ export default function AttendanceScan({
             cancelled = true;
             window.cancelAnimationFrame(raf);
         };
-    }, [attendance.match_distance_threshold, providerRef, ready]);
+    }, [
+        attendance.match_distance_threshold,
+        attendance.min_detection_score,
+        attendance.min_face_box_px,
+        providerRef,
+        ready,
+    ]);
 
     const kioskChip = 'border-0 bg-white/15 text-white backdrop-blur-sm';
 
@@ -377,6 +451,7 @@ export default function AttendanceScan({
                 className="absolute inset-0 size-full object-cover"
             />
             <div className="absolute inset-0 bg-zinc-950/30" />
+            <FaceScanOverlay faces={boxes} />
             <div className="pt-safe pb-safe relative z-10 flex min-h-dvh flex-col justify-between p-5">
                 <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
