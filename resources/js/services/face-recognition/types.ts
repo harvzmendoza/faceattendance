@@ -5,10 +5,16 @@ export type FaceBox = {
     height: number;
 };
 
+export type LandmarkPoint = {
+    x: number;
+    y: number;
+};
+
 export type DetectedFace = {
     box: FaceBox;
     score: number;
     descriptor: number[] | null;
+    landmarks: LandmarkPoint[];
 };
 
 export type FaceErrorCode =

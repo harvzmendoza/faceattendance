@@ -1,21 +1,32 @@
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
-import { Camera, ImagePlus, Save, ScanFace, X } from 'lucide-react';
+import { Camera, RefreshCw, Save, ScanFace, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { StatusChip } from '@/components/status-chip';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { useFaceRecognitionProvider } from '@/hooks/use-face-recognition-provider';
 import AppLayout from '@/layouts/app-layout';
-import {
-    loadImageFromFile,
-    requestCameraStream,
-    stopMediaStream,
-} from '@/lib/camera';
+import { requestCameraStream, stopMediaStream } from '@/lib/camera';
 import { show } from '@/routes/participants';
 import { update as updateFaceProfile } from '@/routes/participants/face-profile';
+import { faceErrorMessages } from '@/services/face-recognition';
+import {
+    createBlinkTracker,
+    meanEyeAspectRatio,
+    REQUIRED_BLINKS,
+} from '@/services/face-recognition/liveness';
 import type { ParticipantSummary } from '@/types/models';
+
+const lookHint = 'Look at the camera.';
+const capturedHint = 'Face captured. Save to enroll.';
+
+function blinkHint(count: number): string {
+    if (count === 0) {
+        return 'Blink twice.';
+    }
+
+    return `Blink twice · ${count} / ${REQUIRED_BLINKS}`;
+}
 
 export default function ParticipantsEnroll({
     participant,
@@ -32,12 +43,18 @@ export default function ParticipantsEnroll({
     } = useFaceRecognitionProvider();
     const videoRef = useRef<HTMLVideoElement>(null);
     const streamRef = useRef<MediaStream | null>(null);
+    const cameraOnRef = useRef(false);
+    const capturedRef = useRef(false);
+    const capturingRef = useRef(false);
+    const lastDetectAt = useRef(0);
+    const trackerRef = useRef(createBlinkTracker());
     const [status, setStatus] = useState(
         participant.latest_face_profile
-            ? 'Re-enroll this participant using the camera or a photo.'
-            : 'Enroll this participant using the camera or a photo.',
+            ? 'Re-enroll this participant using the camera. Blink twice when asked.'
+            : 'Enroll this participant using the camera. Blink twice when asked.',
     );
-    const [capturing, setCapturing] = useState(false);
+    const [cameraOn, setCameraOn] = useState(false);
+    const [blinks, setBlinks] = useState(0);
     const form = useForm({
         descriptor: [] as number[],
         quality_score: 0,
@@ -52,6 +69,8 @@ export default function ParticipantsEnroll({
 
     async function startCamera(): Promise<void> {
         try {
+            stopMediaStream(streamRef.current);
+
             const stream = await requestCameraStream();
             streamRef.current = stream;
 
@@ -60,83 +79,174 @@ export default function ParticipantsEnroll({
                 await videoRef.current.play();
             }
 
-            setStatus('Look at the camera, then capture the face.');
+            trackerRef.current.reset();
+            capturedRef.current = false;
+            capturingRef.current = false;
+            cameraOnRef.current = true;
+            setCameraOn(true);
+            setBlinks(0);
+            form.setData({
+                descriptor: [],
+                quality_score: 0,
+                model_version: attendance.model_version,
+            });
+            setStatus(lookHint);
         } catch (error) {
+            cameraOnRef.current = false;
+            setCameraOn(false);
             setStatus(
                 error instanceof Error
                     ? error.message
-                    : 'Camera access requires permission and HTTPS.',
+                    : faceErrorMessages.camera_denied,
             );
         }
     }
 
-    async function captureFromVideo(): Promise<void> {
-        const video = videoRef.current;
-        const provider = providerRef.current;
+    function tryAgain(): void {
+        trackerRef.current.reset();
+        capturedRef.current = false;
+        capturingRef.current = false;
+        setBlinks(0);
+        form.setData({
+            descriptor: [],
+            quality_score: 0,
+            model_version: attendance.model_version,
+        });
+        setStatus(lookHint);
+    }
 
-        if (!video || !provider) {
-            return;
-        }
+    useEffect(() => {
+        let cancelled = false;
+        let detecting = false;
+        let raf = 0;
 
-        setCapturing(true);
-
-        try {
-            const result = await provider.generateDescriptor(video);
-
-            if (!result.ok) {
-                form.setData('descriptor', []);
-                setStatus(result.message);
-
+        const tick = (): void => {
+            if (cancelled) {
                 return;
             }
 
-            form.setData({
-                descriptor: result.descriptor,
-                quality_score: result.qualityScore,
-                model_version: attendance.model_version,
-            });
-            setStatus('Face captured. Save to enroll.');
-        } finally {
-            setCapturing(false);
-        }
-    }
+            raf = window.requestAnimationFrame(tick);
 
-    async function captureFromPhoto(file: File | undefined): Promise<void> {
-        const provider = providerRef.current;
-
-        if (!file || !provider) {
-            return;
-        }
-
-        setCapturing(true);
-
-        try {
-            const image = await loadImageFromFile(file);
-            const result = await provider.generateDescriptor(image);
-
-            if (!result.ok) {
-                form.setData('descriptor', []);
-                setStatus(result.message);
-
+            if (
+                detecting ||
+                capturingRef.current ||
+                capturedRef.current ||
+                !cameraOnRef.current
+            ) {
                 return;
             }
 
-            form.setData({
-                descriptor: result.descriptor,
-                quality_score: result.qualityScore,
-                model_version: attendance.model_version,
-            });
-            setStatus('Face captured from photo. Save to enroll.');
-        } catch (error) {
-            setStatus(
-                error instanceof Error
-                    ? error.message
-                    : 'Face too blurry. Please hold still.',
-            );
-        } finally {
-            setCapturing(false);
-        }
-    }
+            const video = videoRef.current;
+            const provider = providerRef.current;
+
+            if (!ready || !video || video.readyState < 2 || !provider) {
+                return;
+            }
+
+            const now = Date.now();
+
+            if (now - lastDetectAt.current < 250) {
+                return;
+            }
+
+            lastDetectAt.current = now;
+            detecting = true;
+
+            void provider
+                .detectFace(video)
+                .then(async (faces) => {
+                    if (
+                        cancelled ||
+                        capturedRef.current ||
+                        capturingRef.current
+                    ) {
+                        return;
+                    }
+
+                    if (faces.length === 0) {
+                        setStatus(faceErrorMessages.no_face);
+
+                        return;
+                    }
+
+                    if (faces.length > 1) {
+                        setStatus(faceErrorMessages.multiple_faces);
+
+                        return;
+                    }
+
+                    const face = faces[0];
+                    const boxSide = Math.min(face.box.width, face.box.height);
+
+                    if (boxSide < attendance.min_face_box_px) {
+                        setStatus(faceErrorMessages.too_far);
+
+                        return;
+                    }
+
+                    if (face.score < attendance.min_detection_score) {
+                        setStatus(faceErrorMessages.too_blurry);
+
+                        return;
+                    }
+
+                    const result = trackerRef.current.push(
+                        meanEyeAspectRatio(face.landmarks),
+                    );
+                    setBlinks(result.blinks);
+
+                    if (!result.complete) {
+                        setStatus(blinkHint(result.blinks));
+
+                        return;
+                    }
+
+                    capturingRef.current = true;
+
+                    const enrollment = await provider.generateDescriptor(video);
+
+                    if (cancelled) {
+                        return;
+                    }
+
+                    if (!enrollment.ok) {
+                        trackerRef.current.reset();
+                        capturingRef.current = false;
+                        setBlinks(0);
+                        setStatus(enrollment.message);
+
+                        return;
+                    }
+
+                    capturedRef.current = true;
+                    capturingRef.current = false;
+                    form.setData({
+                        descriptor: enrollment.descriptor,
+                        quality_score: enrollment.qualityScore,
+                        model_version: attendance.model_version,
+                    });
+                    setStatus(capturedHint);
+                })
+                .finally(() => {
+                    detecting = false;
+                });
+        };
+
+        raf = window.requestAnimationFrame(tick);
+
+        return () => {
+            cancelled = true;
+            window.cancelAnimationFrame(raf);
+        };
+        // The RAF loop reads refs; form.setData is stable enough across renders.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [
+        attendance.min_detection_score,
+        attendance.min_face_box_px,
+        attendance.model_version,
+        providerRef,
+        ready,
+    ]);
 
     function submit(event: FormEvent): void {
         event.preventDefault();
@@ -175,16 +285,20 @@ export default function ParticipantsEnroll({
                         label={
                             captured
                                 ? 'Face captured'
-                                : participant.latest_face_profile
-                                  ? 'Already enrolled'
-                                  : 'Not enrolled'
+                                : cameraOn
+                                  ? `Blinks ${blinks} / ${REQUIRED_BLINKS}`
+                                  : participant.latest_face_profile
+                                    ? 'Already enrolled'
+                                    : 'Not enrolled'
                         }
                         tone={
                             captured
                                 ? 'success'
-                                : participant.latest_face_profile
-                                  ? 'success'
-                                  : 'warning'
+                                : cameraOn
+                                  ? 'warning'
+                                  : participant.latest_face_profile
+                                    ? 'success'
+                                    : 'warning'
                         }
                     />
                 </div>
@@ -210,40 +324,26 @@ export default function ParticipantsEnroll({
                     type="button"
                     size="lg"
                     className="w-full"
-                    onClick={startCamera}
+                    onClick={() => {
+                        void startCamera();
+                    }}
                     disabled={!ready}
                 >
                     <Camera />
                     Start camera
                 </Button>
-                <Button
-                    type="button"
-                    variant="secondary"
-                    size="lg"
-                    className="w-full"
-                    onClick={captureFromVideo}
-                    disabled={!ready || capturing}
-                >
-                    <ScanFace />
-                    Capture face
-                </Button>
-                <div className="flex flex-col gap-2">
-                    <Label htmlFor="photo">Or use a photo</Label>
-                    <label className="flex min-h-12 cursor-pointer items-center gap-2 rounded-2xl border border-input px-4 text-sm">
-                        <ImagePlus className="size-5 text-muted-foreground" />
-                        <span>Choose photo</span>
-                        <Input
-                            id="photo"
-                            type="file"
-                            accept="image/jpeg,image/png,image/webp"
-                            className="sr-only"
-                            disabled={!ready || capturing}
-                            onChange={(event) =>
-                                void captureFromPhoto(event.target.files?.[0])
-                            }
-                        />
-                    </label>
-                </div>
+                {cameraOn && (
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        size="lg"
+                        className="w-full"
+                        onClick={tryAgain}
+                    >
+                        <RefreshCw />
+                        Try again
+                    </Button>
+                )}
                 <form onSubmit={submit} className="flex flex-col gap-2">
                     <Button
                         type="submit"

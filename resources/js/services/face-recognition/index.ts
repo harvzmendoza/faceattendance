@@ -3,6 +3,10 @@ export {
     calculateDistance,
     findMatch,
 } from '@/services/face-recognition/matcher';
+export {
+    createBlinkTracker,
+    meanEyeAspectRatio,
+} from '@/services/face-recognition/liveness';
 export { faceErrorMessages } from '@/services/face-recognition/types';
 export type { FaceRecognitionProvider } from '@/services/face-recognition/FaceRecognitionProvider';
 export type {

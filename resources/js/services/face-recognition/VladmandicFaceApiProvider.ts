@@ -75,6 +75,10 @@ export class VladmandicFaceApiProvider implements FaceRecognitionProvider {
             },
             score: detection.detection.score,
             descriptor: Array.from(detection.descriptor),
+            landmarks: detection.landmarks.positions.map((point) => ({
+                x: point.x,
+                y: point.y,
+            })),
         }));
     }
 
